@@ -1,0 +1,49 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. v0.2.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - name: Build
+        env:
+          VERSION: ${{ inputs.version }}
+        run: npm run module
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MusicAssistantTV
+          path: build/MusicAssistantTV.wgt
+
+      - name: Release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          npm version --no-git-tag-version --allow-same-version "${VERSION#v}"
+          git add module package.json package-lock.json
+          git commit -m "Release $VERSION" || true
+          git push origin HEAD:main
+          gh release create "$VERSION" build/MusicAssistantTV.wgt LICENSE THIRD_PARTY_NOTICES.md \
+            --target "$(git rev-parse HEAD)" --title "Music Assistant TV $VERSION" \
+            --notes "Install through TizenBrew (module \`gh/${{ github.repository }}\`) or install \`MusicAssistantTV.wgt\` with Samsung's Tizen tools. See the README."

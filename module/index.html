@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=1080, user-scalable=no">
+<title>Music Assistant TV</title>
+<link rel="stylesheet" href="style.css">
+<script src="$WEBAPIS/webapis/webapis.js"></script>
+</head>
+<body class="view-now">
+<div id="bg"><div id="bg-a" class="bg-layer"></div><div id="bg-b" class="bg-layer"></div><div class="bg-shade"></div></div>
+
+<main id="stage">
+  <!-- Now playing / karaoke -->
+  <section id="now">
+    <div id="art-wrap"><img id="art" alt=""><div id="art-empty"></div></div>
+    <div id="meta">
+      <div id="player-name"></div>
+      <h1 id="title"></h1>
+      <div id="artist"></div>
+      <div id="album"></div>
+      <div id="progress"><div id="bar"><div id="fill"></div></div><div id="times"><span id="pos"></span><span id="dur"></span></div></div>
+      <div id="upnext"></div>
+    </div>
+    <div id="idle">
+      <div class="idle-title">Nothing playing</div>
+      <div class="idle-sub" id="idle-sub"></div>
+    </div>
+  </section>
+
+  <!-- Party -->
+  <section id="party">
+    <div id="party-qr-card">
+      <div id="party-name"></div>
+      <div id="party-qr"></div>
+      <div id="party-qr-text"></div>
+    </div>
+    <div id="party-stack"></div>
+    <div id="party-off"></div>
+  </section>
+
+  <!-- Lyrics, shared by both views -->
+  <div id="lyrics"><div id="lyrics-inner"></div></div>
+</main>
+
+<div id="hints">
+  <span class="hint"><i class="dot red"></i>Player</span>
+  <span class="hint"><i class="dot green"></i>Lyrics</span>
+  <span class="hint"><i class="dot yellow"></i>Party</span>
+  <span class="hint"><i class="dot blue"></i>Settings</span>
+  <span class="hint muted">◀ ▶ skip &nbsp; ▲ ▼ volume &nbsp; OK pause</span>
+</div>
+
+<div id="toast"></div>
+<div id="status"></div>
+
+<div id="overlay" class="hidden">
+  <div class="panel">
+    <h2 id="overlay-title"></h2>
+    <div id="overlay-list" class="list"></div>
+    <div id="overlay-foot"></div>
+  </div>
+</div>
+
+<div id="setup" class="hidden">
+  <div class="setup-box">
+    <div class="brand">Music Assistant <b>TV</b></div>
+    <div id="setup-body"></div>
+    <div id="setup-msg"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
