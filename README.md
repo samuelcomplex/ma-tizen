@@ -23,17 +23,16 @@ playing on the TV and can make the TV a speaker of its own:
 
 | Button | Does |
 | --- | --- |
-| OK, Play/Pause | Pause or resume |
-| ◀ ▶, Previous/Next | Previous or next song |
-| ▲ ▼ | Volume of the player shown (the TV's own volume buttons stay the TV's) |
-| Red | Choose which player to show: automatic, this TV, or any player or group |
-| Green | Lyrics on or off |
-| Yellow | Party mode on or off |
-| Blue | Settings: TV speaker on or off, sync delay, sign out |
-| Back, twice | Close the app |
+| OK | Menu: pause or play, party mode, lyrics, which player to show, settings |
+| Play/Pause | Pause or resume |
+| ◀ ▶ | Previous or next song |
+| ▲ ▼ | Volume of the player shown (the TV's own volume rocker stays the TV's) |
+| Channel up or down | Switch between now playing and party mode |
+| Back | Close the menu; press twice to close the app |
 
-The color buttons are on Samsung's standard remote; on the Smart Remote they're behind the
-"123" button.
+Remotes with color buttons (or the colors behind the Smart Remote's "123" button) also get
+shortcuts: Red picks the player, Green turns lyrics on or off, Yellow switches party mode, Blue
+opens settings.
 
 ## Installing on the TV
 

@@ -796,10 +796,10 @@ interface Row {
 
 let overlayRows: Row[] = [];
 let overlaySel = 0;
-let overlayKind: "" | "players" | "settings" = "";
+let overlayKind: "" | "menu" | "players" | "settings" = "";
 let overlayBuild: () => Row[] = () => [];
 
-function openOverlay(kind: "players" | "settings", title: string, build: () => Row[], foot = ""): void {
+function openOverlay(kind: "menu" | "players" | "settings", title: string, build: () => Row[], foot = ""): void {
   overlayKind = kind;
   overlayBuild = build;
   overlaySel = 0;
@@ -830,6 +830,58 @@ function renderOverlay(): void {
         }${r.checked ? '<div class="chk">✓</div>' : ""}</div>`,
     )
     .join("");
+}
+
+/** The OK menu: everything the color buttons do, for remotes without them. */
+function openMenu(): void {
+  openOverlay("menu", "Menu", menuRows, "▲ ▼ to move · OK to choose · Back to close");
+}
+
+function menuRows(): Row[] {
+  const q = followQueueId ? queues.get(followQueueId) : null;
+  const playing = !!q && q.state === "playing";
+  const rows: Row[] = [];
+  if (q && q.current_item)
+    rows.push({
+      label: playing ? "Pause" : "Play",
+      onOk: () => {
+        closeOverlay();
+        cmd("player_queues/play_pause", { queue_id: q.queue_id });
+      },
+    });
+  rows.push({
+    label: currentView() === "party" ? "Back to now playing" : "Party mode",
+    sub: currentView() === "party" ? "" : "QR code for guests, requests and karaoke",
+    onOk: () => {
+      closeOverlay();
+      castSession = null;
+      setView(currentView() === "party" ? "now" : "party");
+      resolveFollow();
+    },
+  });
+  rows.push({
+    label: "Lyrics",
+    value: settings.lyrics ? "On" : "Off",
+    sub: settings.lyrics && !lyricLines.length && q && q.current_item ? "None for this song" : "",
+    onOk: () => {
+      settings.lyrics = !settings.lyrics;
+      saveSettings();
+      updateKaraokeClass();
+      renderOverlay();
+    },
+  });
+  const pick = settings.follow === "auto" ? "Automatic" : settings.follow === "tv" ? "This TV" : (queues.get(settings.follow) || {}).display_name || "";
+  rows.push({
+    label: "Show which player",
+    value: pick,
+    onOk: () => openOverlay("players", "Show which player", playerRows, "OK to choose · Back to close"),
+  });
+  rows.push({
+    label: "Settings",
+    sub: "TV speaker, sync delay, sign out",
+    onOk: () => openOverlay("settings", "Settings", settingsRows, "◀ ▶ to adjust · OK to change · Back to close"),
+  });
+  return rows;
 }
 
 function playerRows(): Row[] {
@@ -1066,6 +1118,7 @@ async function doLogin(): Promise<void> {
 const KEYS = [
   "MediaPlayPause", "MediaPlay", "MediaPause", "MediaStop", "MediaTrackNext", "MediaTrackPrevious",
   "MediaFastForward", "MediaRewind", "ColorF0Red", "ColorF1Green", "ColorF2Yellow", "ColorF3Blue",
+  "ChannelUp", "ChannelDown",
 ];
 
 function registerKeys(): void {
@@ -1096,6 +1149,9 @@ function keyName(e: KeyboardEvent): string {
     case 404: case 71: return "green";    // G
     case 405: case 89: return "yellow";   // Y
     case 406: case 66: return "blue";     // B
+    case 427: case 33: return "chup";     // Page Up on a PC keyboard
+    case 428: case 34: return "chdown";   // Page Down
+    case 77: return "menu";               // M
   }
   return "";
 }
@@ -1135,8 +1191,18 @@ function onKey(e: KeyboardEvent): void {
   const qid = followQueueId;
   switch (k) {
     case "ok":
+    case "menu":
+      openMenu();
+      break;
     case "playpause":
       if (qid) cmd("player_queues/play_pause", { queue_id: qid });
+      break;
+    case "chup":
+    case "chdown":
+      castSession = null;
+      setView(currentView() === "party" ? "now" : "party");
+      resolveFollow();
+      toast(currentView() === "party" ? "Party mode" : "Now playing");
       break;
     case "stop":
       if (qid) cmd("player_queues/stop", { queue_id: qid });

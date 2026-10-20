@@ -255,3 +255,6 @@ body.view-party #viz.on { opacity: 0.35; }
 #ticker-inner b { color: var(--accent); margin-right: 14px; }
 @keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 body.party-off #ticker { display: none; }
+
+.key { display: inline-block; min-width: 44px; padding: 4px 12px; margin-right: 12px; border-radius: 10px; text-align: center;
+  font-size: 22px; font-weight: 700; color: var(--text); background: rgba(255,255,255,0.14); }
