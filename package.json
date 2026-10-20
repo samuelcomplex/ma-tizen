@@ -6,8 +6,7 @@
   "license": "Apache-2.0",
   "scripts": {
     "build": "node tools/build.mjs",
-    "check": "tsc --noEmit",
-    "module": "node tools/build.mjs && rm -rf module && cp -r build/app module && rm -f module/config.xml"
+    "check": "tsc --noEmit"
   },
   "dependencies": {
     "@sendspin/sendspin-js": "5.0.0",
@@ -17,23 +16,6 @@
     "esbuild": "^0.25.0",
     "typescript": "^5.0.0"
   },
-  "packageType": "app",
-  "appName": "Music Assistant TV",
-  "appPath": "module/index.html",
-  "keys": [
-    "MediaPlayPause",
-    "MediaPlay",
-    "MediaPause",
-    "MediaStop",
-    "MediaTrackNext",
-    "MediaTrackPrevious",
-    "MediaFastForward",
-    "MediaRewind",
-    "ColorF0Red",
-    "ColorF1Green",
-    "ColorF2Yellow",
-    "ColorF3Blue"
-  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/samuelcomplex/ma-tizen"

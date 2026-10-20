@@ -3,17 +3,23 @@
 A [Music Assistant](https://music-assistant.io) app for Samsung TVs (Tizen). It shows what's
 playing on the TV and can make the TV a speaker of its own:
 
-- **Now playing:** big album art, title, artist, progress and what's up next, with the
-  background and accent color taken from the artwork.
+- **Now playing:** big album art, title, artist, progress and what's up next, over a slowly
+  moving background made from the artwork's colors. New songs slide in.
 - **Karaoke:** synced lyrics fill the screen and follow the song, whenever Music Assistant has
-  synced (LRC) lyrics for it (for example from its LRCLIB provider).
+  synced (LRC) lyrics for it (for example from its LRCLIB provider). Lines fill in as they're
+  sung, word by word when the lyrics have word timing, with a count-in before the first line and
+  dots through instrumental breaks.
 - **Party mode:** the party QR code for guests, the current song with request and boost badges,
-  what's coming up, and karaoke lyrics, from Music Assistant's Party plugin.
+  what's coming up, a ticker along the bottom, and karaoke lyrics, from Music Assistant's Party
+  plugin. A guest's song gets a banner when it starts, and a boosted one gets confetti.
 - **Cast from Music Assistant:** the TV registers as a dashboard display, so "Cast" in
   Music Assistant can put the party or now-playing screen on it.
 - **TV speaker:** the TV joins Music Assistant as a [Sendspin](https://www.sendspin-audio.com/)
-  player that plays in sync with your other speakers, with an adjustable sync delay.
-- **Remote control:** no phone needed once it's set up.
+  player that plays in sync with your other speakers, with an adjustable sync delay. While it
+  plays, a visualizer moves with the music.
+- **Clock:** when nothing is playing the TV shows a large clock, and the layout shifts a little
+  every few minutes to avoid burn-in.
+- **Remote control:** no phone needed once it's set up. Volume and pause show on screen.
 
 | Button | Does |
 | --- | --- |
@@ -31,28 +37,19 @@ The color buttons are on Samsung's standard remote; on the Smart Remote they're 
 
 ## Installing on the TV
 
-Samsung TVs only install store apps unless Developer Mode is on. Either way below starts there:
+The app installs as a normal TV app, so it sits in your Apps list and opens like any other.
+[Apps2Samsung](https://github.com/Apps2Samsung/Apps2Samsung) installs it from a Windows, Mac,
+Linux or Android device and takes care of Samsung's signing certificate.
 
-1. On the TV, open **Apps**, then type **1 2 3 4 5** on the remote. Turn **Developer mode** on,
-   enter the address of your computer as the Host PC IP, and restart the TV.
+1. Download `MusicAssistantTV.wgt` from the [latest release](../../releases/latest).
+2. On the TV, turn on Developer mode: open **Apps**, then **App Settings**, and type **1 2 3 4 5**
+   on the remote. Turn **Developer mode** on, enter your computer's address as the **Host PC IP**,
+   and restart the TV by holding the power button until the Samsung logo appears.
+3. In Apps2Samsung, pick your TV, choose to install a custom `.wgt`, and select the file. On 2023
+   and newer TVs it asks you to sign in to a Samsung account once, for the certificate.
+4. Open **Music Assistant TV** from the TV's Apps.
 
-### Through TizenBrew (no developer tools)
-
-[TizenBrew](https://github.com/reisxd/TizenBrew) is a small launcher for community TV apps. It is
-installed once from a computer with its GUI installer, which also takes care of Samsung's signing
-certificate (2023 and newer TVs ask you to sign in to a Samsung account for it).
-
-2. On your computer, run **TizenBrew Installer** from its
-   [releases](https://github.com/reisxd/TizenBrew/releases) and select **Install TizenBrew**.
-3. On the TV, open TizenBrew and press the **green** button for the Module Manager. Choose
-   **Add GitHub Module**, type **`samuelcomplex/ma-tizen`**, and press Done. Then open
-   **Music Assistant TV** from TizenBrew's list.
-
-### As a regular app (.wgt)
-
-`MusicAssistantTV.wgt` from the [latest release](../../releases/latest) is a standard Tizen web
-app. Install it with Samsung's Tizen tools (the Tizen extension for VS Code, or Tizen Studio),
-which sign it with your Samsung certificate for your TV.
+Updating works the same way: install the newer `.wgt` over the old one. Your settings stay.
 
 ## First start
 
@@ -84,16 +81,14 @@ or a soundbar's "lip sync" setting changes that delay, so set it again after cha
 
 ```sh
 npm install
-npm run build     # build/app and build/MusicAssistantTV.wgt (unsigned)
-npm run module    # the TizenBrew module files in module/
+npm run build     # build/app and build/MusicAssistantTV.wgt (unsigned; Apps2Samsung signs it)
 ```
 
 Opening `build/app/index.html` from a local web server in Chrome works for development; R, G, Y
 and B stand in for the color buttons and Escape for Back.
 
 To publish a release, open **Actions > Build > Run workflow** and enter a version such as
-`v0.2.0`. That builds the app, updates `module/` for TizenBrew, and creates the release with the
-`.wgt`.
+`v0.2.0`. That builds the app and creates the release with the `.wgt`.
 
 ## License
 

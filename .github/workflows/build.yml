@@ -26,7 +26,7 @@ jobs:
       - name: Build
         env:
           VERSION: ${{ inputs.version }}
-        run: npm run module
+        run: npm run build
       - uses: actions/upload-artifact@v4
         with:
           name: MusicAssistantTV
@@ -38,12 +38,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          npm version --no-git-tag-version --allow-same-version "${VERSION#v}"
-          git add module package.json package-lock.json
-          git commit -m "Release $VERSION" || true
-          git push origin HEAD:main
           gh release create "$VERSION" build/MusicAssistantTV.wgt LICENSE THIRD_PARTY_NOTICES.md \
-            --target "$(git rev-parse HEAD)" --title "Music Assistant TV $VERSION" \
-            --notes "Install through TizenBrew (Add GitHub Module: \`${{ github.repository }}\`) or install \`MusicAssistantTV.wgt\` with Samsung's Tizen tools. See the README."
+            --target "$GITHUB_SHA" --title "Music Assistant TV $VERSION" \
+            --notes-file .github/release-notes.md

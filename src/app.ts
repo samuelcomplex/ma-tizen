@@ -4,7 +4,8 @@
 import qrcode from "qrcode-generator";
 import { MAClient, MAEvent, login, normalizeServer } from "./api";
 import { scan, FoundServer } from "./discover";
-import { parseLrc, currentLine, LyricLine } from "./lyrics";
+import { parseLrc, currentLine, lineProgress, LyricLine } from "./lyrics";
+import { installAnalyserHook, startVisualizer, confetti, setBackdropColors } from "./fx";
 import { settings, saveSettings } from "./settings";
 import { Speaker } from "./speaker";
 
@@ -179,7 +180,17 @@ function onEvent(e: MAEvent): void {
   switch (e.event) {
     case "player_added":
     case "player_updated":
-      if (e.data && e.data.player_id) players.set(e.data.player_id, e.data);
+      if (e.data && e.data.player_id) {
+        const before = players.get(e.data.player_id);
+        players.set(e.data.player_id, e.data);
+        // show the volume when it changes on the player being shown (from here or anywhere else)
+        if (
+          before &&
+          e.data.player_id === followQueueId &&
+          (before.volume_level !== e.data.volume_level || before.group_volume !== e.data.group_volume)
+        )
+          showVolume(e.data.player_id);
+      }
       scheduleResolve();
       break;
     case "player_removed":
@@ -333,7 +344,22 @@ function setBackground(url: string | null): void {
   if (url) {
     const img = new Image();
     img.onload = () => {
-      a.style.backgroundImage = `url("${url}")`;
+      // blur once into a small canvas; the CSS only moves it around afterwards
+      const c = a as HTMLCanvasElement;
+      const ctx = c.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, c.width, c.height);
+        try {
+          (ctx as any).filter = "blur(18px) saturate(1.35) brightness(0.62)";
+        } catch {
+          /* older engines: the small canvas, scaled up, is soft enough */
+        }
+        const s = Math.max(c.width / img.width, c.height / img.height) * 1.15;
+        const w = img.width * s;
+        const h = img.height * s;
+        ctx.drawImage(img, (c.width - w) / 2, (c.height - h) / 2, w, h);
+        (ctx as any).filter = "none";
+      }
       a.classList.add("on");
       b.classList.remove("on");
     };
@@ -363,6 +389,10 @@ async function applyPalette(image: any): Promise<void> {
         }
         document.documentElement.style.setProperty("--accent", `rgb(${c[0]},${c[1]},${c[2]})`);
       }
+      const rgb = (v: any, lift = 0) =>
+        Array.isArray(v) ? `rgb(${v.map((x: number) => Math.round(x + (255 - x) * lift)).join(",")})` : null;
+      const blobs = [rgb(p.accent, 0.1), rgb(p.primary, 0.15), rgb(p.on_dark || p.accent, 0)].filter(Boolean) as string[];
+      if (blobs.length) setBackdropColors(blobs);
     }
   } catch {
     /* palette is optional */
@@ -373,6 +403,10 @@ function renderQueue(trackChanged: boolean): void {
   const q = followQueueId ? queues.get(followQueueId) : null;
   const item = q && q.current_item;
   document.body.classList.toggle("idle", !item);
+  if (!item) {
+    document.body.classList.remove("paused");
+    lastItemId = "";
+  }
   const pname = q ? q.display_name : "";
   $("player-name").textContent = pname;
   if (!item) {
@@ -383,6 +417,21 @@ function renderQueue(trackChanged: boolean): void {
     return;
   }
   screenSaver(q.state !== "playing");
+  // some players report a paused queue as "idle" with the song still loaded
+  document.body.classList.toggle("paused", q.state !== "playing");
+  const itemId = item.queue_item_id;
+  if (itemId !== lastItemId) {
+    const first = lastItemId === "";
+    lastItemId = itemId;
+    if (!first) {
+      document.body.classList.remove("swap");
+      void document.body.offsetWidth; // restart the animation
+      document.body.classList.add("swap");
+      clearTimeout(swapTimer);
+      swapTimer = setTimeout(() => document.body.classList.remove("swap"), 1200);
+      guestMoment(item);
+    }
+  }
   $("title").textContent = itemTitle(item);
   $("artist").textContent = artists(item);
   const mi = item.media_item;
@@ -406,6 +455,25 @@ function renderQueue(trackChanged: boolean): void {
   }
   renderUpnext();
   renderParty();
+}
+
+let lastItemId = "";
+let swapTimer: any;
+let bannerTimer: any;
+
+/** A guest's song starting: a banner, and confetti when it was boosted. */
+function guestMoment(item: any): void {
+  const ex = (item && item.extra_attributes) || {};
+  if (!ex.party_guest && !ex.party_boosted) return;
+  const b = $("banner");
+  b.textContent = ex.party_boosted ? "Boosted by a guest" : "Requested by a guest";
+  b.classList.add("on");
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => b.classList.remove("on"), 6000);
+  if (ex.party_boosted) {
+    const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#e8a33d";
+    confetti($("confetti") as HTMLCanvasElement, [accent, "#ffffff", "#f0c330", "#3fb35a", "#3b7be5", "#e5413b"]);
+  }
 }
 
 function idleText(): string {
@@ -457,13 +525,21 @@ async function loadLyrics(item: any): Promise<void> {
   }
   if (lyricsFor !== key) return;
   lyricLines = parseLrc(lrc);
+  // a count-in before the first line, when the song has an intro
+  if (lyricLines.length && lyricLines[0].t > 3) lyricLines.unshift({ t: 0, text: "", gap: true });
   renderLyricsList();
 }
 
 let shownLine = -2;
 function renderLyricsList(): void {
   const inner = $("lyrics-inner");
-  inner.innerHTML = lyricLines.map((l) => (l.text ? `<div class="ly">${esc(l.text)}</div>` : `<div class="ly gap"></div>`)).join("");
+  inner.innerHTML = lyricLines
+    .map((l) => {
+      if (l.gap) return `<div class="ly gap"><i></i><i></i><i></i></div>`;
+      if (l.words) return `<div class="ly">${l.words.map((w) => `<span class="w">${esc(w.text)}</span>`).join("")}</div>`;
+      return `<div class="ly">${esc(l.text)}</div>`;
+    })
+    .join("");
   shownLine = -2;
   updateKaraokeClass();
 }
@@ -502,7 +578,10 @@ function tick(): void {
       const els = $("lyrics-inner").children;
       for (let i = 0; i < els.length; i++) {
         const el = els[i] as HTMLElement;
-        el.className = "ly" + (lyricLines[i].text ? "" : " gap") + (i < idx ? " past" : i === idx ? " cur" : i === idx + 1 ? " next" : "");
+        const l = lyricLines[i];
+        el.className =
+          "ly" + (l.gap ? " gap" : "") + (i === idx && !l.gap && !l.words ? " fill" : "") +
+          (i < idx ? " past" : i === idx ? " cur" : i === idx + 1 ? " next" : "");
       }
       const target = els[Math.max(0, idx)] as HTMLElement | undefined;
       if (target) {
@@ -510,7 +589,50 @@ function tick(): void {
         ($("lyrics-inner") as HTMLElement).style.transform = `translateY(${-Math.max(-300, y)}px)`;
       }
     }
+    fillLine(idx, pos + ahead, dur);
   }
+  if (document.body.classList.contains("idle")) updateClock();
+}
+
+/** Fills the current lyric line as it's sung: word by word when the lyrics have word timing. */
+function fillLine(idx: number, pos: number, dur: number): void {
+  if (idx < 0) return;
+  const el = $("lyrics-inner").children[idx] as HTMLElement | undefined;
+  const l = lyricLines[idx];
+  if (!el || !l) return;
+  if (l.gap) {
+    // dots light up over the last few seconds before the next line
+    const next = lyricLines[idx + 1];
+    const left = next ? next.t - pos : 99;
+    const dots = el.children;
+    for (let d = 0; d < dots.length; d++) (dots[d] as HTMLElement).classList.toggle("lit", left < 3.6 - d * 1.2 + 0.0001 && left < 3.6);
+    return;
+  }
+  if (l.words) {
+    const spans = el.children;
+    for (let w = 0; w < spans.length; w++) {
+      const word = l.words[w];
+      const nextT = w + 1 < l.words.length ? l.words[w + 1].t : word.t + 0.6;
+      const sp = spans[w] as HTMLElement;
+      if (pos >= nextT) sp.className = "w done";
+      else if (pos >= word.t) {
+        sp.className = "w now";
+        sp.style.setProperty("--p", Math.round(((pos - word.t) / Math.max(0.15, nextT - word.t)) * 100) + "%");
+      } else sp.className = "w";
+    }
+    return;
+  }
+  el.style.setProperty("--p", Math.round(lineProgress(lyricLines, idx, pos, dur) * 100) + "%");
+}
+
+let clockText = "";
+function updateClock(): void {
+  const now = new Date();
+  const t = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (t === clockText) return;
+  clockText = t;
+  $("clock").textContent = t;
+  $("date").textContent = now.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
 }
 
 // ------------------------------------------------------------------ party
@@ -579,9 +701,28 @@ function renderParty(): void {
     cur ? row(cur, "cur") : "",
     ...upcoming.slice(0, 4).map((it) => row(it, "")),
   ];
+  renderTicker(cur);
   $("party-stack").innerHTML = cur
     ? html.join("")
     : `<div class="pempty"><b>Nothing playing yet</b>Scan the code with your phone to add the first song.</div>`;
+}
+
+let tickerHtml = "";
+function renderTicker(cur: any): void {
+  const c = party.config || {};
+  const requests = upcoming.filter((it) => it && it.extra_attributes && (it.extra_attributes.party_guest || it.extra_attributes.party_boosted)).length;
+  const parts: string[] = [];
+  if (party.url) parts.push(`<span><b>●</b>${esc(c.qr_text || "Scan the code to add a song")}</span>`);
+  if (requests) parts.push(`<span><b>●</b>${requests === 1 ? "1 guest request in the queue" : requests + " guest requests in the queue"}</span>`);
+  if (upcoming[0]) parts.push(`<span><b>Up next</b>${esc(itemTitle(upcoming[0]))}${artists(upcoming[0]) ? " · " + esc(artists(upcoming[0])) : ""}</span>`);
+  if (upcoming[1]) parts.push(`<span><b>Then</b>${esc(itemTitle(upcoming[1]))}</span>`);
+  if (!parts.length && cur) parts.push(`<span><b>Now</b>${esc(itemTitle(cur))}</span>`);
+  // twice, so the scroll loops without a jump
+  const html = parts.length ? parts.join("") + parts.join("") : "";
+  if (html === tickerHtml) return;
+  tickerHtml = html;
+  $("ticker-inner").innerHTML = html;
+  $("ticker").style.display = html ? "" : "none";
 }
 
 // ------------------------------------------------------------------ views and controls
@@ -616,19 +757,29 @@ async function cmd(command: string, args: Record<string, any>): Promise<void> {
   }
 }
 
+let volTimer: any;
+function showVolume(pid: string): void {
+  const p = players.get(pid);
+  if (!p) return;
+  const isGroup = (p.group_members && p.group_members.length > 1) || p.type === "group";
+  const v = isGroup && p.group_volume != null ? p.group_volume : p.volume_level;
+  if (v == null) return;
+  $("vol-name").textContent = p.display_name || p.name || "";
+  ($("vol-bar").firstElementChild as HTMLElement).style.height = Math.max(0, Math.min(100, v)) + "%";
+  $("vol-num").textContent = String(Math.round(v));
+  $("vol").classList.add("on");
+  clearTimeout(volTimer);
+  volTimer = setTimeout(() => $("vol").classList.remove("on"), 2500);
+}
+
 function volumeStep(dir: 1 | -1): void {
   const pid = followedPlayerId();
   if (!pid) return;
   const p = players.get(pid);
   const isGroup = p && ((p.group_members && p.group_members.length > 1) || p.type === "group");
   const command = isGroup ? (dir > 0 ? "players/cmd/group_volume_up" : "players/cmd/group_volume_down") : dir > 0 ? "players/cmd/volume_up" : "players/cmd/volume_down";
-  cmd(command, { player_id: pid }).then(() => {
-    setTimeout(() => {
-      const pp = players.get(pid);
-      const v = pp && (isGroup && pp.group_volume != null ? pp.group_volume : pp.volume_level);
-      toast(v != null ? `Volume ${v}` : dir > 0 ? "Volume up" : "Volume down");
-    }, 350);
-  });
+  showVolume(pid);
+  cmd(command, { player_id: pid });
 }
 
 // ------------------------------------------------------------------ overlays (player picker, settings)
@@ -1064,7 +1215,13 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("beforeunload", () => speaker.stop());
 
-(window as any).__matv = { speaker, settings, players, queues };
+installAnalyserHook();
+startVisualizer($("viz") as HTMLCanvasElement, () => {
+  if (!speaker.playing || !followQueueId) return false;
+  const q = queues.get(followQueueId);
+  return !!q && q.state === "playing" && queueForPlayer(tvPlayerId()) === followQueueId;
+});
+(window as any).__matv = { speaker, settings, players, queues, guestMoment };
 registerKeys();
 setView(settings.view, false);
 setInterval(tick, 100);
