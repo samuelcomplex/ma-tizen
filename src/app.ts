@@ -6,7 +6,7 @@ import { MAClient, MAEvent, login, normalizeServer } from "./api";
 import { scan, FoundServer } from "./discover";
 import { parseLrc, currentLine, lineProgress, LyricLine } from "./lyrics";
 import { installAnalyserHook, startVisualizer, confetti, setBackdropColors } from "./fx";
-import { settings, saveSettings } from "./settings";
+import { settings, saveSettings, BUTTON_PRESETS, PairAction, SingleAction } from "./settings";
 import { Speaker } from "./speaker";
 
 declare const tizen: any;
@@ -939,6 +939,12 @@ function settingsRows(): Row[] {
     });
   }
   rows.push({
+    label: "Remote buttons",
+    sub: "What ◀ ▶, ▲ ▼ and the channel rocker do",
+    value: (BUTTON_PRESETS.find((p) => p.id === settings.buttons.preset) || { name: "Custom" }).name,
+    onOk: () => openOverlay("settings", "Remote buttons", buttonRows, "◀ ▶ to change · Back to close"),
+  });
+  rows.push({
     label: "Lyrics",
     sub: "Synced lyrics when Music Assistant has them",
     value: settings.lyrics ? "On" : "Off",
@@ -1118,7 +1124,7 @@ async function doLogin(): Promise<void> {
 const KEYS = [
   "MediaPlayPause", "MediaPlay", "MediaPause", "MediaStop", "MediaTrackNext", "MediaTrackPrevious",
   "MediaFastForward", "MediaRewind", "ColorF0Red", "ColorF1Green", "ColorF2Yellow", "ColorF3Blue",
-  "ChannelUp", "ChannelDown",
+  "ChannelUp", "ChannelDown", "ChannelList",
 ];
 
 function registerKeys(): void {
@@ -1152,6 +1158,7 @@ function keyName(e: KeyboardEvent): string {
     case 427: case 33: return "chup";     // Page Up on a PC keyboard
     case 428: case 34: return "chdown";   // Page Down
     case 77: return "menu";               // M
+    case 10073: case 76: return "chpress"; // pressing the channel rocker (Channel List); L
   }
   return "";
 }
@@ -1199,27 +1206,27 @@ function onKey(e: KeyboardEvent): void {
       break;
     case "chup":
     case "chdown":
-      castSession = null;
-      setView(currentView() === "party" ? "now" : "party");
-      resolveFollow();
-      toast(currentView() === "party" ? "Party mode" : "Now playing");
+      pairAction(settings.buttons.channel, k === "chup" ? 1 : -1);
       break;
     case "stop":
       if (qid) cmd("player_queues/stop", { queue_id: qid });
       break;
-    case "right":
     case "next":
-      if (qid) cmd("player_queues/next", { queue_id: qid }).then(() => toast("Next"));
+      pairAction("skip", 1);
       break;
-    case "left":
     case "prev":
-      if (qid) cmd("player_queues/previous", { queue_id: qid }).then(() => toast("Previous"));
+      pairAction("skip", -1);
+      break;
+    case "right":
+    case "left":
+      pairAction(settings.buttons.leftRight, k === "right" ? 1 : -1);
       break;
     case "up":
-      volumeStep(1);
-      break;
     case "down":
-      volumeStep(-1);
+      pairAction(settings.buttons.upDown, k === "up" ? 1 : -1);
+      break;
+    case "chpress":
+      singleAction(settings.buttons.channelPress);
       break;
     case "red":
       openOverlay("players", "Show which player", playerRows, "OK to choose · Back to close");
@@ -1248,6 +1255,127 @@ function onKey(e: KeyboardEvent): void {
 }
 
 let lastBack = 0;
+
+function toggleView(): void {
+  castSession = null;
+  setView(currentView() === "party" ? "now" : "party");
+  resolveFollow();
+  toast(currentView() === "party" ? "Party mode" : "Now playing");
+}
+
+function pairAction(a: PairAction, dir: 1 | -1): void {
+  const qid = followQueueId;
+  switch (a) {
+    case "skip":
+      if (qid) cmd(dir > 0 ? "player_queues/next" : "player_queues/previous", { queue_id: qid }).then(() => toast(dir > 0 ? "Next" : "Previous"));
+      break;
+    case "volume":
+      volumeStep(dir);
+      break;
+    case "seek":
+      if (qid) {
+        cmd("player_queues/skip", { queue_id: qid, seconds: dir * 10 });
+        toast(dir > 0 ? "+10 s" : "−10 s");
+      }
+      break;
+    case "view":
+      toggleView();
+      break;
+  }
+}
+
+function singleAction(a: SingleAction): void {
+  const qid = followQueueId;
+  switch (a) {
+    case "playpause":
+      if (qid) cmd("player_queues/play_pause", { queue_id: qid });
+      break;
+    case "lyrics":
+      settings.lyrics = !settings.lyrics;
+      saveSettings();
+      updateKaraokeClass();
+      toast(settings.lyrics ? (lyricLines.length ? "Lyrics on" : "Lyrics on (none for this song)") : "Lyrics off");
+      break;
+    case "party":
+      toggleView();
+      break;
+    case "player":
+      openOverlay("players", "Show which player", playerRows, "OK to choose · Back to close");
+      break;
+    case "menu":
+      openMenu();
+      break;
+  }
+}
+
+const PAIR_NAMES: Record<PairAction, string> = { skip: "Skip songs", volume: "Volume", seek: "Seek 10 s", view: "Party mode", none: "Nothing" };
+const SINGLE_NAMES: Record<SingleAction, string> = { playpause: "Pause/Play", lyrics: "Lyrics on/off", party: "Party mode", player: "Pick player", menu: "Menu", none: "Nothing" };
+const PAIRS: PairAction[] = ["skip", "volume", "seek", "view", "none"];
+const SINGLES: SingleAction[] = ["playpause", "lyrics", "party", "player", "menu", "none"];
+
+function cycle<T>(list: T[], cur: T, d: number): T {
+  return list[(list.indexOf(cur) + d + list.length) % list.length];
+}
+
+/** Hint bar along the bottom, from the current button setup. */
+function renderHints(): void {
+  const b = settings.buttons;
+  const parts: [string, string][] = [["OK", "Menu"]];
+  const pairLabel = (a: PairAction) => (a === "skip" ? "Skip" : a === "volume" ? "Volume" : a === "seek" ? "Seek" : a === "view" ? "Party mode" : "");
+  if (b.leftRight !== "none") parts.push(["◀ ▶", pairLabel(b.leftRight)]);
+  if (b.upDown !== "none") parts.push(["▲ ▼", pairLabel(b.upDown)]);
+  if (b.channel !== "none") parts.push(["CH", pairLabel(b.channel)]);
+  if (b.channelPress !== "none") parts.push(["CH press", SINGLE_NAMES[b.channelPress]]);
+  parts.push(["▶❚❚", "Pause"]);
+  $("hints").innerHTML = parts.map(([k, l]) => `<span class="hint"><b class="key">${esc(k)}</b>${esc(l)}</span>`).join("");
+}
+
+function buttonRows(): Row[] {
+  const b = settings.buttons;
+  const preset = BUTTON_PRESETS.find((p) => p.id === b.preset);
+  const save = () => {
+    saveSettings();
+    renderHints();
+    renderOverlay();
+  };
+  const custom = () => {
+    b.preset = "custom";
+  };
+  const rows: Row[] = [
+    {
+      label: "Preset",
+      sub: preset ? preset.desc : "Your own setup",
+      value: preset ? preset.name : "Custom",
+      onLeft: () => setPreset(-1),
+      onRight: () => setPreset(1),
+      onOk: () => setPreset(1),
+    },
+  ];
+  const pairRow = (label: string, key: "leftRight" | "upDown" | "channel"): Row => ({
+    label,
+    value: PAIR_NAMES[b[key]],
+    onLeft: () => { b[key] = cycle(PAIRS, b[key], -1); custom(); save(); },
+    onRight: () => { b[key] = cycle(PAIRS, b[key], 1); custom(); save(); },
+    onOk: () => { b[key] = cycle(PAIRS, b[key], 1); custom(); save(); },
+  });
+  rows.push(pairRow("◀ ▶ on the ring", "leftRight"));
+  rows.push(pairRow("▲ ▼ on the ring", "upDown"));
+  rows.push(pairRow("Channel rocker up/down", "channel"));
+  rows.push({
+    label: "Pressing the channel rocker",
+    value: SINGLE_NAMES[b.channelPress],
+    onLeft: () => { b.channelPress = cycle(SINGLES, b.channelPress, -1); custom(); save(); },
+    onRight: () => { b.channelPress = cycle(SINGLES, b.channelPress, 1); custom(); save(); },
+    onOk: () => { b.channelPress = cycle(SINGLES, b.channelPress, 1); custom(); save(); },
+  });
+  function setPreset(d: number) {
+    const i = BUTTON_PRESETS.findIndex((p) => p.id === b.preset);
+    const next = BUTTON_PRESETS[(i + d + BUTTON_PRESETS.length) % BUTTON_PRESETS.length];
+    Object.assign(b, next.buttons, { preset: next.id });
+    save();
+  }
+  return rows;
+}
 
 function exitApp(): void {
   speaker.stop();
@@ -1289,6 +1417,7 @@ startVisualizer($("viz") as HTMLCanvasElement, () => {
 });
 (window as any).__matv = { speaker, settings, players, queues, guestMoment };
 registerKeys();
+renderHints();
 setView(settings.view, false);
 setInterval(tick, 100);
 setInterval(() => { if (currentView() === "party") refreshParty(); }, 2 * 60 * 1000);

@@ -21,14 +21,20 @@ playing on the TV and can make the TV a speaker of its own:
   every few minutes to avoid burn-in.
 - **Remote control:** no phone needed once it's set up. Volume and pause show on screen.
 
-| Button | Does |
+| Button | Does (Standard preset) |
 | --- | --- |
 | OK | Menu: pause or play, party mode, lyrics, which player to show, settings |
 | Play/Pause | Pause or resume |
 | ◀ ▶ | Previous or next song |
 | ▲ ▼ | Volume of the player shown (the TV's own volume rocker stays the TV's) |
-| Channel up or down | Switch between now playing and party mode |
+| Channel rocker up/down | Switch between now playing and party mode |
+| Pressing the channel rocker | Lyrics on or off |
 | Back | Close the menu; press twice to close the app |
+
+**Settings > Remote buttons** changes what ◀ ▶, ▲ ▼ and the channel rocker do, with presets
+(Standard; Fixed volume, for speakers with their own volume control; Channel skips) or your own
+choice per button: skip songs, volume, seek 10 seconds, party mode, lyrics, pause, pick player or
+nothing. The hint bar along the bottom follows what you set.
 
 Remotes with color buttons (or the colors behind the Smart Remote's "123" button) also get
 shortcuts: Red picks the player, Green turns lyrics on or off, Yellow switches party mode, Blue
