@@ -534,8 +534,13 @@ async function refreshParty(): Promise<void> {
 
 function renderQr(): void {
   const box = $("party-qr");
+  const card = $("party-qr-card");
+  card.classList.toggle("no-qr", !party.url);
   if (!party.url) {
-    box.innerHTML = "";
+    // the plugin is on but guests can't join yet: say where to switch it on
+    box.innerHTML = `<div class="qr-off">No QR code yet</div>`;
+    $("party-name").textContent = (party.config && party.config.party_name) || "Party";
+    $("party-qr-text").textContent = "In Music Assistant, open Settings, Plugins, Party and turn on “Enable Guest Access via QR Code”.";
     return;
   }
   const qr = qrcode(0, "M");
@@ -548,12 +553,10 @@ function renderQr(): void {
 }
 
 function renderParty(): void {
-  const off = !party.available || !party.url;
+  const off = !party.available;
   document.body.classList.toggle("party-off", off && currentView() === "party");
   if (off) {
-    $("party-off").innerHTML = !party.available
-      ? "<b>Party mode isn't on</b>Turn on the Party plugin in Music Assistant: Settings, Plugins, Add a plugin."
-      : "<b>Guest access is off</b>Turn on guest access in the Party plugin's settings in Music Assistant.";
+    $("party-off").innerHTML = "<b>Party mode isn't on</b>Turn on the Party plugin in Music Assistant: Settings, Plugins, Add a plugin.";
     return;
   }
   const q = followQueueId ? queues.get(followQueueId) : null;
@@ -1065,5 +1068,6 @@ window.addEventListener("beforeunload", () => speaker.stop());
 registerKeys();
 setView(settings.view, false);
 setInterval(tick, 100);
+setInterval(() => { if (currentView() === "party") refreshParty(); }, 2 * 60 * 1000);
 showHints();
 connect();

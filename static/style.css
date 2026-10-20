@@ -165,3 +165,7 @@ body.show-hints #hints { opacity: 1; }
 #setup .btn.sel { border-color: var(--focus); }
 #setup .row { background: rgba(255,255,255,0.05); }
 #setup-msg { font-size: 28px; color: #f08a7a; margin-top: 26px; min-height: 40px; }
+
+.qr-off { width: 428px; height: 428px; margin: 0 auto; border: 4px dashed #c9c6cf; border-radius: 16px;
+  display: flex; align-items: center; justify-content: center; font-size: 34px; font-weight: 700; color: #8a8692; }
+#party-qr-card.no-qr #party-qr-text { font-size: 26px; line-height: 1.35; }
