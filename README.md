@@ -44,8 +44,9 @@ certificate (2023 and newer TVs ask you to sign in to a Samsung account for it).
 
 2. On your computer, run **TizenBrew Installer** from its
    [releases](https://github.com/reisxd/TizenBrew/releases) and select **Install TizenBrew**.
-3. On the TV, open TizenBrew, go to **Module Manager**, add the module
-   **`gh/samuelcomplex/ma-tizen`**, and open **Music Assistant TV**.
+3. On the TV, open TizenBrew and press the **green** button for the Module Manager. Choose
+   **Add GitHub Module**, type **`samuelcomplex/ma-tizen`**, and press Done. Then open
+   **Music Assistant TV** from TizenBrew's list.
 
 ### As a regular app (.wgt)
 
