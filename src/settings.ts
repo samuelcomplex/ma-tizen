@@ -15,6 +15,7 @@ export interface Settings {
   tvMuted: boolean; // visuals only: the TV joins playback silently, for the visualizer
   vizStyle: "bars" | "wave" | "ring" | "off";
   bgStyle: "liquid" | "simple";
+  glLevel: number; // how much the TV can take: 0 = best, higher = smaller and slower
   scanPopups: boolean;
   statsPopups: boolean;
   upNextCountdown: boolean;
@@ -75,6 +76,7 @@ function defaults(): Settings {
     tvMuted: false,
     vizStyle: "bars",
     bgStyle: "liquid",
+    glLevel: 0,
     scanPopups: true,
     statsPopups: true,
     upNextCountdown: true,

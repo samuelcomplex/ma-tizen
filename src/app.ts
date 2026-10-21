@@ -11,8 +11,9 @@ import { Moments } from "./moments";
 import { WledSync, findWled } from "./wled";
 import { Quiz } from "./quiz";
 import { localAddress } from "./discover";
-import { installAudioTap, readAudio, setTvMuted } from "./audio";
-import { GlBackground } from "./bggl";
+import { installAudioTap, readAudio, setTvMuted, audioInfo } from "./audio";
+import { GlBackground, GL_LEVELS } from "./bggl";
+import { diagLog, diagLines, hookConsole } from "./diag";
 import { Visualizer, VizStyle } from "./viz";
 import { settings, saveSettings, BUTTON_PRESETS, PairAction, SingleAction } from "./settings";
 import { Speaker } from "./speaker";
@@ -20,6 +21,9 @@ import { Speaker } from "./speaker";
 declare const tizen: any;
 declare const webapis: any;
 declare const APP_VERSION: string;
+
+hookConsole();
+diagLog("app " + (typeof APP_VERSION !== "undefined" ? APP_VERSION : "dev") + " started");
 
 const $ = (id: string) => document.getElementById(id)!;
 const esc = (s: any) =>
@@ -838,6 +842,7 @@ let overlayBuild: () => Row[] = () => [];
 
 function openOverlay(kind: "menu" | "players" | "settings", title: string, build: () => Row[], foot = ""): void {
   overlayKind = kind;
+  document.body.classList.add("ov");
   overlayBuild = build;
   overlaySel = 0;
   $("overlay-title").textContent = title;
@@ -851,6 +856,8 @@ function openOverlay(kind: "menu" | "players" | "settings", title: string, build
 
 function closeOverlay(): void {
   overlayKind = "";
+  diagOpen = false;
+  document.body.classList.remove("ov");
   $("overlay").classList.add("hidden");
 }
 
@@ -1124,6 +1131,39 @@ function playerRows(): Row[] {
   return rows;
 }
 
+let diagOpen = false;
+function diagRows(): Row[] {
+  const p: any = speaker.player;
+  const ai = audioInfo();
+  let si: any = null;
+  let fmt: any = null;
+  try {
+    si = p ? p.syncInfo : null;
+    fmt = p ? p.currentFormat : null;
+  } catch {
+    /* not ready yet */
+  }
+  const rows: Row[] = [
+    {
+      label: "Speaker",
+      value: speaker.info(),
+      sub: fmt ? String(fmt.codec) + " " + fmt.sample_rate + " Hz, " + fmt.channels + " channels, " + (fmt.bit_depth || "?") + " bit" : "No stream yet",
+    },
+    {
+      label: "Audio engine: " + (ai ? ai.state : "not started"),
+      value: si ? "sync " + si.syncErrorMs.toFixed(1) + " ms" : "",
+      sub: (ai ? ai.sampleRate + " Hz, output delay " + ai.outputLatencyMs + " ms" : "Starts when the first song plays on the TV") + (si ? ", " + si.resyncCount + " resyncs" : ""),
+    },
+    {
+      label: "Screen: " + (fpsNow ? fpsNow.toFixed(0) + " fps" : "measuring"),
+      value: glBg ? "Background level " + glBg.level : settings.bgStyle === "liquid" ? "No WebGL" : "Simple background",
+    },
+  ];
+  const log = diagLines();
+  for (let i = log.length - 1; i >= 0 && rows.length < 40; i--) rows.push({ label: log[i] });
+  return rows;
+}
+
 function settingsRows(): Row[] {
   const rows: Row[] = [
     {
@@ -1167,6 +1207,16 @@ function settingsRows(): Row[] {
         renderOverlay();
       },
     });
+  if (settings.speakerEnabled)
+    rows.push({
+      label: "Speaker status",
+      sub: "What the TV's audio is doing, for troubleshooting",
+      value: speaker.playing ? "Playing" : speaker.connected ? "Connected" : "Not connected",
+      onOk: () => {
+        diagOpen = true;
+        openOverlay("settings", "Speaker status", diagRows, "Updates every second · Back to close");
+      },
+    });
   const styles: VizStyle[] = ["bars", "wave", "ring", "off"];
   const styleName: Record<string, string> = { bars: "Bars", wave: "Wave", ring: "Ring", off: "Off" };
   const stepStyle = (d: number) => () => {
@@ -1188,6 +1238,10 @@ function settingsRows(): Row[] {
     value: settings.bgStyle === "liquid" ? (glBg ? "Liquid" : "Liquid (not supported)") : "Simple",
     onOk: () => {
       settings.bgStyle = settings.bgStyle === "liquid" ? "simple" : "liquid";
+      if (settings.bgStyle === "liquid") {
+        settings.glLevel = 0; // try the best again; the TV steps it down if it can't keep up
+        govGrace = 2;
+      }
       saveSettings();
       // a canvas keeps its first context, so switching takes a fresh one
       const old = $("bggl");
@@ -1672,6 +1726,7 @@ speaker.onChange = () => {
 
 document.addEventListener("keydown", onKey);
 document.addEventListener("visibilitychange", () => {
+  diagLog("page " + (document.hidden ? "hidden" : "visible"));
   if (document.hidden) speaker.stop();
   else if (settings.speakerEnabled && settings.server && settings.token) speaker.start(settings.server);
 });
@@ -1762,7 +1817,7 @@ installAudioTap();
 setTvMuted(settings.tvMuted);
 let glBg: GlBackground | null = null;
 function setupBackground(): void {
-  glBg = settings.bgStyle === "liquid" ? GlBackground.create($("bggl") as HTMLCanvasElement) : null;
+  glBg = settings.bgStyle === "liquid" ? GlBackground.create($("bggl") as HTMLCanvasElement, settings.glLevel || 0) : null;
   $("bg").classList.toggle("gl", !!glBg);
   if (glBg && bgUrl) {
     const u = bgUrl;
@@ -1778,11 +1833,60 @@ function audioActive(): boolean {
   return !!q && q.state === "playing" && queueForPlayer(tvPlayerId()) === followQueueId;
 }
 let lastBeatShown = -1;
+
+// The TV's graphics chip is weak. Watch how fast frames really come; if they crawl, step the
+// background down (smaller, then slower, then the simple one) until the TV keeps up, and
+// remember where it settled. The audio is fed from the same thread, so a stuttering screen can
+// also mean stuttering sound.
+let govLast = 0;
+let govAcc = 0;
+let govFrames = 0;
+let govGrace = 3;
+let frameNo = 0;
+let vizHalf = false;
+let fpsNow = 0;
+function governor(now: number): void {
+  const dt = govLast ? Math.min(1000, now - govLast) : 0;
+  govLast = now;
+  if (!dt || document.hidden) return;
+  govAcc += dt;
+  govFrames++;
+  if (govAcc < 3000) return;
+  fpsNow = (govFrames * 1000) / govAcc;
+  govAcc = 0;
+  govFrames = 0;
+  if (govGrace > 0) {
+    govGrace--; // the first moments (artwork loading, page setup) don't count
+    return;
+  }
+  if (fpsNow >= 22) return;
+  govGrace = 1;
+  if (glBg && glBg.level < GL_LEVELS.length - 1) {
+    glBg.setLevel(glBg.level + 1);
+    settings.glLevel = glBg.level;
+    saveSettings();
+    diagLog("screen at " + fpsNow.toFixed(0) + " fps: background level " + glBg.level);
+  } else if (settings.bgStyle === "liquid") {
+    settings.bgStyle = "simple";
+    saveSettings();
+    const old = $("bggl");
+    old.parentNode!.replaceChild(old.cloneNode() as HTMLCanvasElement, old);
+    setupBackground();
+    diagLog("screen at " + fpsNow.toFixed(0) + " fps: simple background");
+    toast("Switched to the simple background: this TV couldn't keep up");
+  } else if (!vizHalf) {
+    vizHalf = true;
+    diagLog("screen at " + fpsNow.toFixed(0) + " fps: visualizer at half speed");
+  }
+}
+
 function frameLoop(now: number): void {
   requestAnimationFrame(frameLoop);
+  frameNo++;
+  governor(now);
   const a = readAudio(now, audioActive());
   if (glBg) glBg.render(now, a);
-  visualizer.draw(a, settings.vizStyle as VizStyle, now);
+  if (!vizHalf || frameNo % 2 === 0) visualizer.draw(a, settings.vizStyle as VizStyle, now);
   const ringOn = settings.vizStyle === "ring";
   if (ringOn !== document.body.classList.contains("viz-ring")) document.body.classList.toggle("viz-ring", ringOn);
   const b = Math.round(a.beat * 20) / 20;
@@ -1794,11 +1898,23 @@ function frameLoop(now: number): void {
   if (wled.enabled) wled.update(a, accentRgb(), settings.wled.strength, now);
 }
 requestAnimationFrame(frameLoop);
-(window as any).__matv = { speaker, settings, players, queues, guestMoment, quiz, startDanceOff: () => startDanceOff(), drop: () => (moments as any).on.drop() };
+(window as any).__matv = { gl: () => glBg, fps: () => fpsNow, speaker, settings, players, queues, guestMoment, quiz, startDanceOff: () => startDanceOff(), drop: () => (moments as any).on.drop() };
 registerKeys();
 renderHints();
 setView(settings.view, false);
 setInterval(tick, 100);
+// log what the speaker does, so a sound that stops can be traced afterwards
+let wasPlaying = false;
+let wasConnected = false;
+setInterval(() => {
+  const pl = speaker.playing;
+  const co = speaker.connected;
+  if (co !== wasConnected) diagLog("speaker " + (co ? "connected" : "disconnected"));
+  if (pl !== wasPlaying) diagLog("speaker " + (pl ? "playing" : "stopped"));
+  wasPlaying = pl;
+  wasConnected = co;
+  if (diagOpen && overlayKind === "settings") renderOverlay();
+}, 1000);
 setInterval(() => { if (currentView() === "party") refreshParty(); }, 2 * 60 * 1000);
 showHints();
 connect();

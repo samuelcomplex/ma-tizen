@@ -22,14 +22,19 @@ export class Visualizer {
   private accentStr = "";
 
   constructor(private canvas: HTMLCanvasElement, private artEl: HTMLElement) {
+    // drawn at half size (a quarter of the pixels) and scaled up by the page; all the numbers
+    // below are in 1920x1080 screen pixels
+    canvas.width = 960;
+    canvas.height = 540;
     this.ctx = canvas.getContext("2d")!;
+    this.ctx.setTransform(0.5, 0, 0, 0.5, 0, 0);
   }
 
   draw(a: AudioFrame, style: VizStyle, now: number): void {
     const on = style !== "off" && a.active;
     const ctx = this.ctx;
-    const W = this.canvas.width;
-    const H = this.canvas.height;
+    const W = 1920;
+    const H = 1080;
     if (!on) {
       if (this.shown) {
         ctx.clearRect(0, 0, W, H);

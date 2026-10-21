@@ -152,7 +152,7 @@ body.show-hints #hints { opacity: 1; }
 #status.on { display: block; }
 
 /* ---------- overlay lists (player picker, settings) */
-#overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; }
+#overlay { z-index: 20; position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; }
 .panel { width: 980px; max-height: 920px; background: var(--panel); border-radius: 26px; padding: 50px 56px; box-shadow: 0 40px 120px rgba(0,0,0,0.6); display: flex; flex-direction: column; }
 .panel h2 { margin: 0 0 30px; font-size: 44px; }
 .list { overflow: hidden; position: relative; }
@@ -164,7 +164,7 @@ body.show-hints #hints { opacity: 1; }
 #overlay-foot { margin-top: 26px; font-size: 24px; color: var(--faint); }
 
 /* ---------- setup */
-#setup { position: fixed; inset: 0; background: radial-gradient(ellipse at 30% 20%, #2a2233, #0d0c10 70%); display: flex; align-items: center; justify-content: center; }
+#setup { z-index: 30; position: fixed; inset: 0; background: radial-gradient(ellipse at 30% 20%, #2a2233, #0d0c10 70%); display: flex; align-items: center; justify-content: center; }
 .setup-box { width: 1100px; }
 .brand { font-size: 40px; color: var(--dim); margin-bottom: 40px; }
 .brand b { color: var(--accent); }
@@ -380,3 +380,6 @@ body.quiz-on #now, body.quiz-on #party, body.quiz-on #lyrics, body.quiz-on #upca
 .qz-step.s0 .qz-block { height: 260px; }
 .qz-step.s2 .qz-block { height: 200px; }
 .qz-final .qz-board { max-width: 900px; margin: 0 auto 30px; text-align: left; }
+
+/* corner cards and the up-next card stay out of the way while a menu is open */
+body.ov #pop, body.ov #upcard, body.ov #quizcard { visibility: hidden; }

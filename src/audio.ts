@@ -4,6 +4,8 @@
 // rerouted through an output gain we own (so "visuals only" can silence the TV without telling
 // Music Assistant), and also tapped by an analyser.
 
+import { diagLog } from "./diag";
+
 interface Tap {
   analyser: AnalyserNode;
   out: GainNode;
@@ -32,6 +34,13 @@ export function installAudioTap(): void {
           connect.call(out, dest);
           t = { analyser, out };
           taps.set(this.context, t);
+          try {
+            const ctx: any = this.context;
+            diagLog("audio engine " + ctx.state + ", " + ctx.sampleRate + " Hz");
+            ctx.addEventListener("statechange", () => diagLog("audio engine " + ctx.state));
+          } catch {
+            /* ignore */
+          }
         }
         connect.call(this, t.analyser);
         current = t;
@@ -43,6 +52,14 @@ export function installAudioTap(): void {
     return connect.call(this, dest, ...rest);
   };
   proto.__matvHooked = true;
+}
+
+/** What the audio engine is doing, for the speaker status screen. */
+export function audioInfo(): { state: string; sampleRate: number; outputLatencyMs: number } | null {
+  if (!current) return null;
+  const c: any = current.analyser.context;
+  const ol = typeof c.outputLatency === "number" ? c.outputLatency : c.baseLatency || 0;
+  return { state: c.state, sampleRate: c.sampleRate, outputLatencyMs: Math.round(ol * 1000) };
 }
 
 /** Silences the TV's own output while keeping the analysis running (visuals only). */

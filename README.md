@@ -5,7 +5,9 @@ playing on the TV and can make the TV a speaker of its own:
 
 - **Now playing:** big album art, title, artist, progress and what's up next, over a flowing
   "liquid" background made from the album art and drawn by the TV's graphics chip; it pulses
-  with the music while the TV plays along. New songs slide in.
+  with the music while the TV plays along. New songs slide in. The TV's chip is modest, so the
+  background is drawn small and at a few frames a second; if the screen still can't keep up, the
+  app steps it down by itself (and finally to a simple background) and remembers where it settled.
 - **Karaoke:** synced lyrics fill the screen and follow the song, whenever Music Assistant has
   synced (LRC) lyrics for it (for example from its LRCLIB provider). Lines fill in as they're
   sung, word by word when the lyrics have word timing, with a count-in before the first line and
@@ -32,7 +34,8 @@ playing on the TV and can make the TV a speaker of its own:
   plays, a visualizer moves with the music: bars, a wave, or a ring around the album art (which
   then turns like a record). **Visuals only** keeps the TV silent but still playing along, so the
   visuals work while your other speakers make the sound: group the TV with them in Music
-  Assistant.
+  Assistant. **Settings > Speaker status** shows what the TV's audio is doing (connection, audio
+  engine, stream format, sync error, screen speed) and a log of recent events, for troubleshooting.
 - **Clock:** when nothing is playing the TV shows a large clock, and the layout shifts a little
   every few minutes to avoid burn-in.
 - **Remote control:** no phone needed once it's set up. Volume and pause show on screen.
