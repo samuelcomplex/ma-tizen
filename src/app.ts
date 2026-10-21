@@ -5,7 +5,11 @@ import qrcode from "qrcode-generator";
 import { MAClient, MAEvent, login, normalizeServer } from "./api";
 import { scan, FoundServer } from "./discover";
 import { parseLrc, currentLine, lineProgress, LyricLine } from "./lyrics";
-import { confetti, setBackdropColors } from "./fx";
+import { confetti, setBackdropColors, sparks } from "./fx";
+import { Extras } from "./extras";
+import { Moments } from "./moments";
+import { WledSync, findWled } from "./wled";
+import { localAddress } from "./discover";
 import { installAudioTap, readAudio, setTvMuted } from "./audio";
 import { GlBackground } from "./bggl";
 import { Visualizer, VizStyle } from "./viz";
@@ -448,7 +452,10 @@ function renderQueue(trackChanged: boolean): void {
       clearTimeout(swapTimer);
       swapTimer = setTimeout(() => document.body.classList.remove("swap"), 1200);
       guestMoment(item);
+      extras.onTrackStart(item);
     }
+    const md = item.media_item && item.media_item.metadata;
+    moments.newSong(md && md.bpm ? Number(md.bpm) : null);
   }
   $("title").textContent = itemTitle(item);
   $("artist").textContent = artists(item);
@@ -610,6 +617,12 @@ function tick(): void {
     fillLine(idx, pos + ahead, dur);
   }
   if (document.body.classList.contains("idle")) updateClock();
+  extras.tick(Date.now());
+  if (danceUntil) {
+    const left = Math.max(0, Math.ceil((danceUntil - Date.now()) / 1000));
+    $("dance-time").textContent = "0:" + String(left).padStart(2, "0");
+    if (!left) endDanceOff();
+  }
 }
 
 /** Fills the current lyric line as it's sung: word by word when the lyrics have word timing. */
@@ -895,10 +908,135 @@ function menuRows(): Row[] {
     onOk: () => openOverlay("players", "Show which player", playerRows, "OK to choose · Back to close"),
   });
   rows.push({
+    label: "Party extras",
+    sub: "Pop-ups, up-next countdown, drops, dance-offs, lights",
+    onOk: () => openOverlay("settings", "Party extras", extrasRows, "OK to change · Back to close"),
+  });
+  rows.push({
     label: "Settings",
     sub: "TV speaker, sync delay, sign out",
     onOk: () => openOverlay("settings", "Settings", settingsRows, "◀ ▶ to adjust · OK to change · Back to close"),
   });
+  return rows;
+}
+
+function toggleRow(label: string, sub: string, key: "scanPopups" | "statsPopups" | "upNextCountdown" | "drops" | "danceOffs"): Row {
+  return {
+    label,
+    sub,
+    value: settings[key] ? "On" : "Off",
+    onOk: () => {
+      (settings as any)[key] = !settings[key];
+      saveSettings();
+      renderOverlay();
+    },
+  };
+}
+
+function extrasRows(): Row[] {
+  const needsAudio = "Needs the TV to play along (sound or Visuals only)";
+  return [
+    toggleRow("Scan-to-add pop-ups", "A small QR card now and then, and while the queue is nearly empty", "scanPopups"),
+    toggleRow("Party stats pop-ups", "Songs played, guest requests and more, now and then", "statsPopups"),
+    toggleRow("Up-next countdown", "The next song and who asked for it, in the last 15 seconds", "upNextCountdown"),
+    toggleRow("Drop moments", "A flash and sparks when the beat drops. " + needsAudio, "drops"),
+    toggleRow("Dance-offs", "A 45-second dance-off when a dance song is in full swing. " + needsAudio, "danceOffs"),
+    {
+      label: "Start a dance-off now",
+      onOk: () => {
+        closeOverlay();
+        startDanceOff();
+      },
+    },
+    {
+      label: "Show party stats now",
+      onOk: () => {
+        closeOverlay();
+        extras.showStats(15000);
+      },
+    },
+    {
+      label: "Reset party stats",
+      sub: "Start counting from zero",
+      onOk: () => {
+        extras.resetStats();
+        toast("Party stats reset");
+      },
+    },
+    {
+      label: "Lights (WLED)",
+      sub: settings.wled.on ? "On: " + wled.status() : "Off",
+      onOk: () => openOverlay("settings", "Lights (WLED)", wledRows, "OK to change · ◀ ▶ to adjust · Back to close"),
+    },
+  ];
+}
+
+let wledFound: { host: string; name: string }[] = [];
+let wledScanning = false;
+function wledRows(): Row[] {
+  const w = settings.wled;
+  const save = () => {
+    saveSettings();
+    wled.setHosts(w.hosts);
+    renderOverlay();
+  };
+  const rows: Row[] = [
+    {
+      label: "Light sync",
+      sub: w.on ? wled.status() : "Lights follow the album colors and pulse with the music",
+      value: w.on ? "On" : "Off",
+      onOk: () => {
+        w.on = !w.on;
+        if (w.on) wled.enabled = true;
+        else wled.stop();
+        save();
+      },
+    },
+    {
+      label: "Brightness",
+      value: Math.round(w.strength * 100) + "%",
+      onLeft: () => {
+        w.strength = Math.max(0.2, Math.round((w.strength - 0.1) * 10) / 10);
+        save();
+      },
+      onRight: () => {
+        w.strength = Math.min(1, Math.round((w.strength + 0.1) * 10) / 10);
+        save();
+      },
+    },
+    {
+      label: wledScanning ? "Searching…" : "Find lights",
+      sub: "Looks for WLED on your network",
+      onOk: async () => {
+        if (wledScanning) return;
+        wledScanning = true;
+        wledFound = [];
+        renderOverlay();
+        await findWled(await localAddress(), (host, name) => {
+          if (!wledFound.some((f) => f.host === host)) wledFound.push({ host, name });
+          if (overlayKind) renderOverlay();
+        });
+        wledScanning = false;
+        if (overlayKind) renderOverlay();
+      },
+    },
+  ];
+  const all = new Map<string, string>();
+  for (const h of w.hosts) all.set(h, h);
+  for (const f of wledFound) all.set(f.host, f.name);
+  for (const [host, name] of all) {
+    const used = w.hosts.includes(host);
+    rows.push({
+      label: name,
+      sub: host,
+      checked: used,
+      onOk: () => {
+        w.hosts = used ? w.hosts.filter((h) => h !== host) : w.hosts.concat(host);
+        save();
+      },
+    });
+  }
+  if (!all.size && !wledScanning) rows.push({ label: "No lights yet", sub: "Select Find lights" });
   return rows;
 }
 
@@ -1471,6 +1609,69 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("beforeunload", () => speaker.stop());
 
+const extras = new Extras(
+  {
+    queue: () => (followQueueId ? queues.get(followQueueId) || null : null),
+    upcoming: () => upcoming,
+    position: () => position(),
+    duration: () => {
+      const q = followQueueId ? queues.get(followQueueId) : null;
+      const it = q && q.current_item;
+      return (it && (it.duration || (it.media_item && it.media_item.duration))) || 0;
+    },
+    partyUrl: () => (party.available ? party.url : null),
+    partyConfig: () => party.config,
+    view: () => currentView(),
+    imageUrl: (it, size) => (client ? client.imageUrl(itemImage(it), size) : null),
+    title: itemTitle,
+    artists,
+  },
+  $("pop"),
+  $("upcard"),
+);
+
+const moments = new Moments({
+  drop: () => {
+    const f = $("flash");
+    f.classList.remove("boom");
+    void f.offsetWidth;
+    f.classList.add("boom");
+    const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#e8a33d";
+    sparks($("confetti") as HTMLCanvasElement, [accent, "#ffffff", accent, "#f0c330"]);
+  },
+  danceOff: () => startDanceOff(),
+});
+
+let danceUntil = 0;
+function startDanceOff(): void {
+  danceUntil = Date.now() + 45000;
+  moments.markDance();
+  document.body.classList.add("dance");
+}
+function endDanceOff(): void {
+  danceUntil = 0;
+  document.body.classList.remove("dance");
+  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#e8a33d";
+  confetti($("confetti") as HTMLCanvasElement, [accent, "#ffffff", "#f0c330", "#3fb35a", "#3b7be5", "#e5413b"]);
+  toast("Time's up! Who won?");
+}
+
+let accentCache = "";
+let accentVal = [232, 163, 61];
+function accentRgb(): number[] {
+  const c = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  if (c !== accentCache) {
+    accentCache = c;
+    const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c);
+    if (m) accentVal = [+m[1], +m[2], +m[3]];
+  }
+  return accentVal;
+}
+
+const wled = new WledSync();
+wled.setHosts(settings.wled.hosts);
+wled.enabled = settings.wled.on;
+
 installAudioTap();
 setTvMuted(settings.tvMuted);
 let glBg: GlBackground | null = null;
@@ -1490,7 +1691,6 @@ function audioActive(): boolean {
   const q = queues.get(followQueueId);
   return !!q && q.state === "playing" && queueForPlayer(tvPlayerId()) === followQueueId;
 }
-const artWrap = $("art-wrap");
 let lastBeatShown = -1;
 function frameLoop(now: number): void {
   requestAnimationFrame(frameLoop);
@@ -1502,11 +1702,13 @@ function frameLoop(now: number): void {
   const b = Math.round(a.beat * 20) / 20;
   if (b !== lastBeatShown) {
     lastBeatShown = b;
-    artWrap.style.setProperty("--beat", String(b));
+    document.documentElement.style.setProperty("--beat", String(b));
   }
+  moments.feed(a, now, settings.drops, settings.danceOffs && !danceUntil);
+  if (wled.enabled) wled.update(a, accentRgb(), settings.wled.strength, now);
 }
 requestAnimationFrame(frameLoop);
-(window as any).__matv = { speaker, settings, players, queues, guestMoment };
+(window as any).__matv = { speaker, settings, players, queues, guestMoment, startDanceOff: () => startDanceOff(), drop: () => (moments as any).on.drop() };
 registerKeys();
 renderHints();
 setView(settings.view, false);

@@ -15,6 +15,12 @@ export interface Settings {
   tvMuted: boolean; // visuals only: the TV joins playback silently, for the visualizer
   vizStyle: "bars" | "wave" | "ring" | "off";
   bgStyle: "liquid" | "simple";
+  scanPopups: boolean;
+  statsPopups: boolean;
+  upNextCountdown: boolean;
+  drops: boolean;
+  danceOffs: boolean;
+  wled: { on: boolean; hosts: string[]; strength: number };
 }
 
 /** What the configurable buttons do. Pairs (◀ ▶, ▲ ▼, channel rocker) take a pair action. */
@@ -67,6 +73,12 @@ function defaults(): Settings {
     tvMuted: false,
     vizStyle: "bars",
     bgStyle: "liquid",
+    scanPopups: true,
+    statsPopups: true,
+    upNextCountdown: true,
+    drops: true,
+    danceOffs: false,
+    wled: { on: false, hosts: [], strength: 1 },
   };
 }
 

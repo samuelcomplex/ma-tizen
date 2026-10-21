@@ -79,6 +79,7 @@ export class Visualizer {
     for (let s = 0; s < 2; s++) {
       for (let i = 0; i < n; i++) {
         const v = a.bands[i];
+        if (v < 0.02 && this.peaks[i] < 0.03) continue;
         const h = Math.max(3, Math.pow(v, 1.4) * maxH);
         const idx = s === 0 ? n - 1 - i : n + i;
         const x = 40 + idx * (bw + gap);
