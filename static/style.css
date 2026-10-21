@@ -225,9 +225,13 @@ body.swap #art-wrap { animation: pop 0.9s cubic-bezier(.2,.7,.2,1) both; }
 .idle-title { font-size: 44px; }
 
 /* ---------- visualizer and confetti */
-#viz { position: fixed; left: 0; bottom: 0; width: 1920px; height: 150px; opacity: 0; transition: opacity 1s; pointer-events: none; }
-#viz.on { opacity: 0.55; }
-body.view-party #viz.on { opacity: 0.35; }
+#viz { position: fixed; left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none; opacity: 0.85; }
+body.view-party #viz { opacity: 0.6; }
+#bggl { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }
+#bg.gl #bggl { display: block; }
+#bg.gl .bg-layer, #bg.gl .blob { display: none; }
+#bg.gl .bg-shade { background: radial-gradient(ellipse at 30% 40%, rgba(0,0,0,0), rgba(0,0,0,0.35) 80%); }
+#art-wrap { transform: scale(calc(1 + var(--beat, 0) * 0.025)); }
 #confetti { position: fixed; inset: 0; pointer-events: none; display: none; z-index: 7; }
 #confetti.on { display: block; }
 
@@ -258,3 +262,11 @@ body.party-off #ticker { display: none; }
 
 .key { display: inline-block; min-width: 44px; padding: 4px 12px; margin-right: 12px; border-radius: 10px; text-align: center;
   font-size: 22px; font-weight: 700; color: var(--text); background: rgba(255,255,255,0.14); }
+
+/* ring visualizer: the art becomes a slowly turning record */
+body.viz-ring #art-wrap { border-radius: 50%; }
+body.viz-ring #art { animation: spin 40s linear infinite; }
+body.viz-ring.paused #art, body.viz-ring.idle #art { animation-play-state: paused; }
+@keyframes spin { to { transform: rotate(360deg); } }
+body.viz-ring #art-wrap::after { content: ""; position: absolute; left: 50%; top: 50%; width: 9%; height: 9%; margin: -4.5% 0 0 -4.5%;
+  border-radius: 50%; background: rgba(13,12,16,0.85); box-shadow: 0 0 0 6px rgba(255,255,255,0.15); }

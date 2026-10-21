@@ -12,6 +12,9 @@ export interface Settings {
   view: "now" | "party";
   dashboardId: string;
   buttons: Buttons;
+  tvMuted: boolean; // visuals only: the TV joins playback silently, for the visualizer
+  vizStyle: "bars" | "wave" | "ring" | "off";
+  bgStyle: "liquid" | "simple";
 }
 
 /** What the configurable buttons do. Pairs (◀ ▶, ▲ ▼, channel rocker) take a pair action. */
@@ -61,6 +64,9 @@ function defaults(): Settings {
     view: "now",
     dashboardId: "tv-" + Math.random().toString(36).slice(2, 10),
     buttons: Object.assign({ preset: "standard" }, BUTTON_PRESETS[0].buttons),
+    tvMuted: false,
+    vizStyle: "bars",
+    bgStyle: "liquid",
   };
 }
 

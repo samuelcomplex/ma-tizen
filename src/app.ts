@@ -5,7 +5,10 @@ import qrcode from "qrcode-generator";
 import { MAClient, MAEvent, login, normalizeServer } from "./api";
 import { scan, FoundServer } from "./discover";
 import { parseLrc, currentLine, lineProgress, LyricLine } from "./lyrics";
-import { installAnalyserHook, startVisualizer, confetti, setBackdropColors } from "./fx";
+import { confetti, setBackdropColors } from "./fx";
+import { installAudioTap, readAudio, setTvMuted } from "./audio";
+import { GlBackground } from "./bggl";
+import { Visualizer, VizStyle } from "./viz";
 import { settings, saveSettings, BUTTON_PRESETS, PairAction, SingleAction } from "./settings";
 import { Speaker } from "./speaker";
 
@@ -338,6 +341,17 @@ let bgUrl = "";
 function setBackground(url: string | null): void {
   if (url === bgUrl) return;
   bgUrl = url || "";
+  if (glBg) {
+    if (!url) glBg.setArt(null);
+    else {
+      const gi = new Image();
+      gi.crossOrigin = "anonymous";
+      gi.onload = () => {
+        if (bgUrl === url && glBg) glBg.setArt(gi);
+      };
+      gi.src = url;
+    }
+  }
   const a = $(bgFlip ? "bg-a" : "bg-b");
   const b = $(bgFlip ? "bg-b" : "bg-a");
   bgFlip = !bgFlip;
@@ -393,6 +407,10 @@ async function applyPalette(image: any): Promise<void> {
         Array.isArray(v) ? `rgb(${v.map((x: number) => Math.round(x + (255 - x) * lift)).join(",")})` : null;
       const blobs = [rgb(p.accent, 0.1), rgb(p.primary, 0.15), rgb(p.on_dark || p.accent, 0)].filter(Boolean) as string[];
       if (blobs.length) setBackdropColors(blobs);
+      if (glBg) {
+        const raw = [p.accent, p.primary, p.on_dark || p.accent].filter((v: any) => Array.isArray(v));
+        if (raw.length >= 3) glBg.setPalette(raw);
+      }
     }
   } catch {
     /* palette is optional */
@@ -446,7 +464,7 @@ function renderQueue(trackChanged: boolean): void {
       art.onload = () => art.classList.add("on");
       art.src = url;
     } else art.removeAttribute("src");
-    setBackground(client ? client.imageUrl(image, 256) : null);
+    setBackground(client ? client.imageUrl(image, glBg ? 512 : 256) : null);
     applyPalette(image);
   }
   if (trackChanged) {
@@ -938,6 +956,50 @@ function settingsRows(): Row[] {
       onOk: step(50),
     });
   }
+  if (settings.speakerEnabled)
+    rows.push({
+      label: "TV sound",
+      sub: settings.tvMuted
+        ? "Silent: the TV plays along only for the visualizer. Group it with your speakers in Music Assistant."
+        : "The TV plays the music out loud",
+      value: settings.tvMuted ? "Visuals only" : "Play sound",
+      onOk: () => {
+        settings.tvMuted = !settings.tvMuted;
+        saveSettings();
+        setTvMuted(settings.tvMuted);
+        renderOverlay();
+      },
+    });
+  const styles: VizStyle[] = ["bars", "wave", "ring", "off"];
+  const styleName: Record<string, string> = { bars: "Bars", wave: "Wave", ring: "Ring", off: "Off" };
+  const stepStyle = (d: number) => () => {
+    settings.vizStyle = styles[(styles.indexOf(settings.vizStyle as VizStyle) + d + styles.length) % styles.length];
+    saveSettings();
+    renderOverlay();
+  };
+  rows.push({
+    label: "Visualizer",
+    sub: "Moves with what the TV plays (also in Visuals only)",
+    value: styleName[settings.vizStyle] || "Bars",
+    onLeft: stepStyle(-1),
+    onRight: stepStyle(1),
+    onOk: stepStyle(1),
+  });
+  rows.push({
+    label: "Background",
+    sub: settings.bgStyle === "liquid" ? "Flowing album art drawn by the TV's graphics chip" : "Simple blurred album art",
+    value: settings.bgStyle === "liquid" ? (glBg ? "Liquid" : "Liquid (not supported)") : "Simple",
+    onOk: () => {
+      settings.bgStyle = settings.bgStyle === "liquid" ? "simple" : "liquid";
+      saveSettings();
+      // a canvas keeps its first context, so switching takes a fresh one
+      const old = $("bggl");
+      const c = old.cloneNode() as HTMLCanvasElement;
+      old.parentNode!.replaceChild(c, old);
+      setupBackground();
+      renderOverlay();
+    },
+  });
   rows.push({
     label: "Remote buttons",
     sub: "What ◀ ▶, ▲ ▼ and the channel rocker do",
@@ -1409,12 +1471,41 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("beforeunload", () => speaker.stop());
 
-installAnalyserHook();
-startVisualizer($("viz") as HTMLCanvasElement, () => {
+installAudioTap();
+setTvMuted(settings.tvMuted);
+let glBg: GlBackground | null = null;
+function setupBackground(): void {
+  glBg = settings.bgStyle === "liquid" ? GlBackground.create($("bggl") as HTMLCanvasElement) : null;
+  $("bg").classList.toggle("gl", !!glBg);
+  if (glBg && bgUrl) {
+    const u = bgUrl;
+    bgUrl = "";
+    setBackground(u);
+  }
+}
+setupBackground();
+const visualizer = new Visualizer($("viz") as HTMLCanvasElement, $("art-wrap"));
+function audioActive(): boolean {
   if (!speaker.playing || !followQueueId) return false;
   const q = queues.get(followQueueId);
   return !!q && q.state === "playing" && queueForPlayer(tvPlayerId()) === followQueueId;
-});
+}
+const artWrap = $("art-wrap");
+let lastBeatShown = -1;
+function frameLoop(now: number): void {
+  requestAnimationFrame(frameLoop);
+  const a = readAudio(now, audioActive());
+  if (glBg) glBg.render(now, a);
+  visualizer.draw(a, settings.vizStyle as VizStyle, now);
+  const ringOn = settings.vizStyle === "ring";
+  if (ringOn !== document.body.classList.contains("viz-ring")) document.body.classList.toggle("viz-ring", ringOn);
+  const b = Math.round(a.beat * 20) / 20;
+  if (b !== lastBeatShown) {
+    lastBeatShown = b;
+    artWrap.style.setProperty("--beat", String(b));
+  }
+}
+requestAnimationFrame(frameLoop);
 (window as any).__matv = { speaker, settings, players, queues, guestMoment };
 registerKeys();
 renderHints();
