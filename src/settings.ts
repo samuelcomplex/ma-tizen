@@ -21,6 +21,8 @@ export interface Settings {
   drops: boolean;
   danceOffs: boolean;
   wled: { on: boolean; hosts: string[]; strength: number };
+  quizMode: "off" | "sometimes";
+  quizRounds: number;
 }
 
 /** What the configurable buttons do. Pairs (◀ ▶, ▲ ▼, channel rocker) take a pair action. */
@@ -79,6 +81,8 @@ function defaults(): Settings {
     drops: true,
     danceOffs: false,
     wled: { on: false, hosts: [], strength: 1 },
+    quizMode: "off",
+    quizRounds: 5,
   };
 }
 

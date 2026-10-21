@@ -9,6 +9,7 @@ import { confetti, setBackdropColors, sparks } from "./fx";
 import { Extras } from "./extras";
 import { Moments } from "./moments";
 import { WledSync, findWled } from "./wled";
+import { Quiz } from "./quiz";
 import { localAddress } from "./discover";
 import { installAudioTap, readAudio, setTvMuted } from "./audio";
 import { GlBackground } from "./bggl";
@@ -252,6 +253,9 @@ function onEvent(e: MAEvent): void {
     case "providers_updated":
       refreshParty();
       break;
+    case "provider_event":
+      if (e.data && (e.data.event === "game_updated" || e.data.event === "game_removed")) quiz.onProviderEvent(e.data);
+      break;
   }
 }
 
@@ -453,6 +457,7 @@ function renderQueue(trackChanged: boolean): void {
       swapTimer = setTimeout(() => document.body.classList.remove("swap"), 1200);
       guestMoment(item);
       extras.onTrackStart(item);
+      maybeRandomQuiz(item);
     }
     const md = item.media_item && item.media_item.metadata;
     moments.newSong(md && md.bpm ? Number(md.bpm) : null);
@@ -617,7 +622,8 @@ function tick(): void {
     fillLine(idx, pos + ahead, dur);
   }
   if (document.body.classList.contains("idle")) updateClock();
-  extras.tick(Date.now());
+  quiz.tick();
+  if (!quiz.active) extras.tick(Date.now());
   if (danceUntil) {
     const left = Math.max(0, Math.ceil((danceUntil - Date.now()) / 1000));
     $("dance-time").textContent = "0:" + String(left).padStart(2, "0");
@@ -908,6 +914,11 @@ function menuRows(): Row[] {
     onOk: () => openOverlay("players", "Show which player", playerRows, "OK to choose · Back to close"),
   });
   rows.push({
+    label: "Music quiz",
+    sub: quiz.active ? "A quiz is on" : settings.quizMode === "sometimes" ? "Pops up now and then during the party" : "Guests play on their phones",
+    onOk: () => openOverlay("settings", "Music quiz", quizRows, "OK to choose · ◀ ▶ to adjust · Back to close"),
+  });
+  rows.push({
     label: "Party extras",
     sub: "Pop-ups, up-next countdown, drops, dance-offs, lights",
     onOk: () => openOverlay("settings", "Party extras", extrasRows, "OK to change · Back to close"),
@@ -918,6 +929,54 @@ function menuRows(): Row[] {
     onOk: () => openOverlay("settings", "Settings", settingsRows, "◀ ▶ to adjust · OK to change · Back to close"),
   });
   return rows;
+}
+
+function quizRows(): Row[] {
+  const rows: Row[] = [];
+  if (quiz.active)
+    rows.push({
+      label: "End the quiz",
+      sub: "And go back to the party music",
+      onOk: () => {
+        closeOverlay();
+        quiz.finish(true);
+      },
+    });
+  else
+    rows.push({
+      label: "Start a quiz now",
+      sub: "Opens the lobby; guests scan the code to join",
+      onOk: () => {
+        closeOverlay();
+        quiz.start({ rounds: settings.quizRounds });
+      },
+    });
+  rows.push({
+    label: "Random quizzes",
+    sub: settings.quizMode === "sometimes" ? "Now and then a quiz announces itself in the corner; it starts if someone joins" : "Only when you start one",
+    value: settings.quizMode === "sometimes" ? "Sometimes" : "Off",
+    onOk: () => {
+      settings.quizMode = settings.quizMode === "sometimes" ? "off" : "sometimes";
+      saveSettings();
+      renderOverlay();
+    },
+  });
+  const step = (d: number) => () => {
+    settings.quizRounds = Math.max(3, Math.min(15, settings.quizRounds + d));
+    saveSettings();
+    renderOverlay();
+  };
+  rows.push({ label: "Rounds", value: String(settings.quizRounds), onLeft: step(-1), onRight: step(1), onOk: step(1) });
+  return rows;
+}
+
+/** "Sometimes": after a few songs, now and then, announce a quiz for when this song ends. */
+function maybeRandomQuiz(item: any): void {
+  quiz.songsSince++;
+  if (settings.quizMode !== "sometimes" || quiz.active || danceUntil) return;
+  if (quiz.songsSince < 8 || Math.random() > 0.3) return;
+  const dur = (item && (item.duration || (item.media_item && item.media_item.duration))) || 180;
+  quiz.start({ random: true, rounds: settings.quizRounds, lobbySeconds: Math.max(60, Math.min(150, dur - 10)) });
 }
 
 function toggleRow(label: string, sub: string, key: "scanPopups" | "statsPopups" | "upNextCountdown" | "drops" | "danceOffs"): Row {
@@ -1380,6 +1439,15 @@ function onKey(e: KeyboardEvent): void {
   }
   if (!k) return;
   e.preventDefault();
+  if (quiz.fullScreen && !overlayKind) {
+    if (k === "ok") quiz.ok();
+    else if (k === "back") {
+      if (Date.now() - lastBack < 2500) quiz.finish(true);
+      else toast("Press Back again to end the quiz");
+      lastBack = Date.now();
+    } else if (k === "menu") openMenu();
+    return;
+  }
   if (overlayKind) {
     const r = overlayRows[overlaySel];
     if (k === "down") overlaySel++;
@@ -1630,6 +1698,24 @@ const extras = new Extras(
   $("upcard"),
 );
 
+const quiz = new Quiz(
+  {
+    send: (c, a, t) => (client ? client.send(c, a, t) : Promise.reject(new Error("not connected"))),
+    queueId: () => followQueueId,
+    position: () => position(),
+    serverNow: () => serverNow(),
+    imageUrl: (u) => u,
+    toast,
+    onActive: (on) => document.body.classList.toggle("quiz-on", on),
+    celebrate: () => {
+      const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#e8a33d";
+      confetti($("confetti") as HTMLCanvasElement, [accent, "#ffffff", "#f0c330", "#3fb35a", "#3b7be5", "#e5413b"]);
+    },
+  },
+  $("quiz"),
+  $("quizcard"),
+);
+
 const moments = new Moments({
   drop: () => {
     const f = $("flash");
@@ -1704,11 +1790,11 @@ function frameLoop(now: number): void {
     lastBeatShown = b;
     document.documentElement.style.setProperty("--beat", String(b));
   }
-  moments.feed(a, now, settings.drops, settings.danceOffs && !danceUntil);
+  if (!quiz.fullScreen) moments.feed(a, now, settings.drops, settings.danceOffs && !danceUntil);
   if (wled.enabled) wled.update(a, accentRgb(), settings.wled.strength, now);
 }
 requestAnimationFrame(frameLoop);
-(window as any).__matv = { speaker, settings, players, queues, guestMoment, startDanceOff: () => startDanceOff(), drop: () => (moments as any).on.drop() };
+(window as any).__matv = { speaker, settings, players, queues, guestMoment, quiz, startDanceOff: () => startDanceOff(), drop: () => (moments as any).on.drop() };
 registerKeys();
 renderHints();
 setView(settings.view, false);

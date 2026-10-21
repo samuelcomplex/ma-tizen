@@ -13,6 +13,18 @@ playing on the TV and can make the TV a speaker of its own:
 - **Party mode:** the party QR code for guests, the current song with request and boost badges,
   what's coming up, a ticker along the bottom, and karaoke lyrics, from Music Assistant's Party
   plugin. A guest's song gets a banner when it starts, and a boosted one gets confetti.
+- **Music quiz:** host Music Assistant's Music Quiz from the TV (Menu > Music quiz). Guests scan
+  the code, pick a name and answer on their phones; the TV shows the lobby, a countdown, the
+  answers and a scoreboard, and ends on a podium. The quiz takes over the party player, so the
+  TV saves the queue first and puts the music back afterwards. With **Random quizzes:
+  Sometimes**, a quiz now and then announces itself in a corner card and starts when the song
+  ends, if anyone joined. Needs the Music Quiz plugin turned on in Music Assistant.
+- **Party extras** (Menu > Party extras, each one can be turned off): a small scan-to-add card
+  now and then (and while the queue is nearly empty), party stats pop-ups, an up-next countdown
+  in the last 15 seconds of a song, a flash and sparks when the beat drops, and dance-offs when
+  a dance song is in full swing.
+- **Lights:** WLED lights follow the album colors and pulse with the music (Menu > Party extras >
+  Lights). The TV finds them on your network and gives them their old state back afterwards.
 - **Cast from Music Assistant:** the TV registers as a dashboard display, so "Cast" in
   Music Assistant can put the party or now-playing screen on it.
 - **TV speaker:** the TV joins Music Assistant as a [Sendspin](https://www.sendspin-audio.com/)
