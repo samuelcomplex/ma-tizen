@@ -9,6 +9,7 @@ import { confetti, setBackdropColors, sparks } from "./fx";
 import { Extras } from "./extras";
 import { Moments } from "./moments";
 import { WledSync, findWled } from "./wled";
+import { LedFx, findLedFx, LedFxScenes } from "./ledfx";
 import { Quiz } from "./quiz";
 import { localAddress } from "./discover";
 import { installAudioTap, readAudio, setTvMuted, audioInfo } from "./audio";
@@ -1030,11 +1031,151 @@ function extrasRows(): Row[] {
       },
     },
     {
-      label: "Lights (WLED)",
-      sub: settings.wled.on ? "On: " + wled.status() : "Off",
+      label: "Lights (LedFx)",
+      sub: settings.ledfx.on ? "On: " + (ledfx.connected ? "connected, " + ledfx.scenes.length + " scenes" : ledfx.lastError || "connecting") : "Off. LedFx listens to Music Assistant itself; the TV switches its scenes",
+      onOk: () => {
+        openOverlay("settings", "Lights (LedFx)", ledfxRows, "OK to change · ◀ ▶ to pick a scene · Back to close");
+        if (ledfx.host) void ledfx.refresh().then(() => overlayKind && renderOverlay());
+      },
+    },
+    {
+      label: "Lights (WLED directly)",
+      sub: settings.wled.on ? "On: " + wled.status() : "Off. Follows the album colors and the TV's sound, without LedFx",
       onOk: () => openOverlay("settings", "Lights (WLED)", wledRows, "OK to change · ◀ ▶ to adjust · Back to close"),
     },
   ];
+}
+
+// ---- LedFx
+
+/** The LedFx player in Music Assistant (LedFx joins as a Sendspin player named "LedFx"). */
+function ledfxPlayer(): any | null {
+  for (const p of players.values()) if (/ledfx/i.test(String(p.display_name || p.name || "")) && p.available !== false) return p;
+  return null;
+}
+
+function ledfxInParty(lp: any): boolean {
+  const t = followQueueId;
+  if (!t) return false;
+  const tp = players.get(t);
+  return lp.synced_to === t || lp.active_group === t || !!(tp && tp.group_members && tp.group_members.indexOf(lp.player_id) >= 0);
+}
+
+async function addLedFxToParty(): Promise<void> {
+  const lp = ledfxPlayer();
+  if (!lp || !followQueueId || !client) {
+    toast("LedFx isn't in Music Assistant yet");
+    return;
+  }
+  try {
+    await client.send("players/cmd/set_members", { target_player: followQueueId, player_ids_to_add: [lp.player_id] });
+    toast("LedFx added to the party");
+  } catch (e: any) {
+    toast("Couldn't add LedFx: " + String((e && e.message) || e).slice(0, 80));
+  }
+  if (overlayKind) renderOverlay();
+}
+
+const LEDFX_SLOTS: { key: keyof LedFxScenes; label: string; sub: string }[] = [
+  { key: "base", label: "Music playing", sub: "The everyday party scene" },
+  { key: "drop", label: "Drop", sub: "When the beat drops (the TV must play along)" },
+  { key: "dance", label: "Dance-off", sub: "While a dance-off runs" },
+  { key: "quiz", label: "Music quiz", sub: "While a quiz runs" },
+  { key: "idle", label: "Nothing playing", sub: "When the music stops" },
+];
+let ledfxFound: { host: string; version: string }[] = [];
+let ledfxScanning = false;
+function ledfxRows(): Row[] {
+  const L = settings.ledfx;
+  const save = () => {
+    saveSettings();
+    renderOverlay();
+  };
+  const choose = (host: string) => {
+    L.host = host;
+    ledfx.setHost(host);
+    saveSettings();
+    void ledfx.refresh().then(() => overlayKind && renderOverlay());
+    renderOverlay();
+  };
+  const rows: Row[] = [
+    {
+      label: "LedFx",
+      sub: L.on ? (ledfx.connected ? "Connected: LedFx " + ledfx.version + ", " + ledfx.scenes.length + " scenes" : ledfx.lastError || "Connecting…") : "Switches LedFx scenes for what's happening at the party",
+      value: L.on ? "On" : "Off",
+      onOk: () => {
+        L.on = !L.on;
+        ledfx.enabled = L.on;
+        if (L.on) {
+          if (settings.wled.on) {
+            settings.wled.on = false;
+            wled.stop();
+            toast("Direct WLED sync turned off: the lights can only follow one");
+          }
+          void ledfx.refresh().then(() => overlayKind && renderOverlay());
+        }
+        save();
+      },
+    },
+    {
+      label: "LedFx address",
+      sub: ledfxScanning ? "Searching…" : "OK to search your network",
+      value: L.host || "Not set",
+      onOk: async () => {
+        if (ledfxScanning) return;
+        ledfxScanning = true;
+        ledfxFound = [];
+        renderOverlay();
+        await findLedFx(await localAddress(), settings.server, (host, version) => {
+          if (!ledfxFound.some((f) => f.host === host)) ledfxFound.push({ host, version });
+          if (!L.host) choose(host);
+          else if (overlayKind) renderOverlay();
+        });
+        ledfxScanning = false;
+        if (overlayKind) renderOverlay();
+      },
+    },
+  ];
+  for (const f of ledfxFound)
+    if (f.host !== L.host) rows.push({ label: "Use " + f.host, sub: "LedFx " + f.version, onOk: () => choose(f.host) });
+  const lp = ledfxPlayer();
+  rows.push(
+    !lp
+      ? { label: "LedFx in Music Assistant", value: "Not found", sub: "In LedFx add a Sendspin server, ws://" + (settings.server.replace(/^https?:\/\//, "").replace(/:\d+$/, "") || "your-music-assistant") + ":8927/sendspin, then pick it as the audio input" }
+      : ledfxInParty(lp)
+      ? { label: "LedFx in the party", value: "Listening", sub: "LedFx hears " + (players.get(followQueueId || "") ? (players.get(followQueueId || "").display_name || "the party") : "the party") }
+      : { label: "LedFx in the party", value: "Not grouped", sub: "OK to add LedFx to the speakers playing now, so it hears the music", onOk: () => void addLedFxToParty() },
+  );
+  if (ledfx.connected) {
+    for (const slot of LEDFX_SLOTS) {
+      const cur = L.scenes[slot.key];
+      const known = ledfx.scenes.filter((s) => s.id === cur)[0];
+      const options = [""].concat(ledfx.scenes.map((s) => s.id));
+      const step = (d: number) => () => {
+        const i = Math.max(0, options.indexOf(cur));
+        L.scenes[slot.key] = options[(i + d + options.length) % options.length];
+        save();
+      };
+      rows.push({
+        label: slot.label,
+        sub: slot.sub + (cur ? ". OK to try it" : ""),
+        value: !cur ? "No change" : known ? known.name : cur + " (missing)",
+        onLeft: step(-1),
+        onRight: step(1),
+        onOk: () => {
+          if (!cur) return;
+          ledfx.hold(6000); // keep it on screen for a moment before the party's own scene returns
+          void ledfx.activate(cur).then((err) => toast(err || "Switched to " + (known ? known.name : cur)));
+        },
+      });
+    }
+    rows.push({
+      label: "Reload scenes",
+      sub: "After adding or renaming scenes in LedFx",
+      onOk: () => void ledfx.refresh().then(() => overlayKind && renderOverlay()),
+    });
+  }
+  return rows;
 }
 
 let wledFound: { host: string; name: string }[] = [];
@@ -1053,8 +1194,14 @@ function wledRows(): Row[] {
       value: w.on ? "On" : "Off",
       onOk: () => {
         w.on = !w.on;
-        if (w.on) wled.enabled = true;
-        else wled.stop();
+        if (w.on) {
+          wled.enabled = true;
+          if (settings.ledfx.on) {
+            settings.ledfx.on = false;
+            ledfx.enabled = false;
+            toast("LedFx control turned off: the lights can only follow one");
+          }
+        } else wled.stop();
         save();
       },
     },
@@ -1771,8 +1918,10 @@ const quiz = new Quiz(
   $("quizcard"),
 );
 
+let dropUntil = 0; // LedFx's drop scene stays on until then
 const moments = new Moments({
   drop: () => {
+    dropUntil = Date.now() + 8000;
     const f = $("flash");
     f.classList.remove("boom");
     void f.offsetWidth;
@@ -1812,6 +1961,21 @@ function accentRgb(): number[] {
 const wled = new WledSync();
 wled.setHosts(settings.wled.hosts);
 wled.enabled = settings.wled.on;
+
+const ledfx = new LedFx();
+ledfx.setHost(settings.ledfx.host);
+ledfx.enabled = settings.ledfx.on;
+if (ledfx.enabled && ledfx.host) void ledfx.refresh();
+// tells LedFx what is going on, a couple of times a second
+setInterval(() => {
+  if (!ledfx.enabled) return;
+  const q = followQueueId ? queues.get(followQueueId) : null;
+  ledfx.update(
+    { playing: !!q && q.state === "playing", quiz: quiz.fullScreen, dance: !!danceUntil, drop: Date.now() < dropUntil },
+    settings.ledfx.scenes,
+    performance.now(),
+  );
+}, 500);
 
 installAudioTap();
 setTvMuted(settings.tvMuted);
@@ -1898,7 +2062,7 @@ function frameLoop(now: number): void {
   if (wled.enabled) wled.update(a, accentRgb(), settings.wled.strength, now);
 }
 requestAnimationFrame(frameLoop);
-(window as any).__matv = { gl: () => glBg, fps: () => fpsNow, speaker, settings, players, queues, guestMoment, quiz, startDanceOff: () => startDanceOff(), drop: () => (moments as any).on.drop() };
+(window as any).__matv = { ledfx, dropNow: () => { dropUntil = Date.now() + 8000; }, gl: () => glBg, fps: () => fpsNow, speaker, settings, players, queues, guestMoment, quiz, startDanceOff: () => startDanceOff(), drop: () => (moments as any).on.drop() };
 registerKeys();
 renderHints();
 setView(settings.view, false);

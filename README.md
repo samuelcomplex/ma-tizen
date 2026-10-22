@@ -25,8 +25,13 @@ playing on the TV and can make the TV a speaker of its own:
   now and then (and while the queue is nearly empty), party stats pop-ups, an up-next countdown
   in the last 15 seconds of a song, a flash and sparks when the beat drops, and dance-offs when
   a dance song is in full swing.
-- **Lights:** WLED lights follow the album colors and pulse with the music (Menu > Party extras >
-  Lights). The TV finds them on your network and gives them their old state back afterwards.
+- **Lights with LedFx** (Menu > Party extras > Lights (LedFx)): [LedFx](https://www.ledfx.app)
+  does the audio analysis and the effects; the TV switches its scenes for what's happening: one
+  for music playing, a drop, a dance-off, a quiz and nothing playing. See "Lights with LedFx"
+  below.
+- **Lights, WLED directly** (Menu > Party extras > Lights (WLED directly)): WLED lights follow the
+  album colors and the TV's sound without LedFx. The TV finds them on your network and gives them
+  their old state back afterwards.
 - **Cast from Music Assistant:** the TV registers as a dashboard display, so "Cast" in
   Music Assistant can put the party or now-playing screen on it.
 - **TV speaker:** the TV joins Music Assistant as a [Sendspin](https://www.sendspin-audio.com/)
@@ -83,6 +88,28 @@ Updating works the same way: install the newer `.wgt` over the old one. Your set
    sign out from Settings (Blue).
 3. The TV appears in Music Assistant as the player "Samsung TV". Play something on it, or on any
    other player, and the app shows it.
+
+## Lights with LedFx
+
+LedFx 2.2 can join Music Assistant as a Sendspin player, so it hears whatever your speakers play
+and drives your lights with its own effects. The TV doesn't send it audio; it only tells LedFx
+what's going on by switching scenes.
+
+1. In LedFx, add a Sendspin server (Settings > Audio): `ws://<your Music Assistant>:8927/sendspin`.
+   Then pick it as the audio input and restart LedFx. "LedFx" appears as a player in Music
+   Assistant.
+2. Make a few scenes in LedFx (for example everyday, drop, dance-off, quiz, off).
+3. On the TV: **Menu > Party extras > Lights (LedFx)**. Switch it on, select **LedFx address** to
+   search your network, and pick a scene for each moment. OK on a scene row tries it. The row
+   **LedFx in the party** adds LedFx to the speakers that are playing, so it hears the music.
+
+Drops and dance-offs are detected from the TV's own sound, so those scenes need the TV to play
+along (sound or Visuals only). The everyday, quiz and nothing-playing scenes work with any player.
+Turning on LedFx turns off direct WLED sync, and the other way round.
+
+If the TV says LedFx refused it, add the origin it shows to `allowed_origins` in LedFx's config.
+Home Assistant's LedFx integration only controls LedFx and takes no audio, and WLED's own audio
+sync needs UDP, which a TV app can't send, so LedFx is the way to get real audio-reactive lights.
 
 ## Sync
 

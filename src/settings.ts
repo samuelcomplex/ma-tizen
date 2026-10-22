@@ -22,6 +22,8 @@ export interface Settings {
   drops: boolean;
   danceOffs: boolean;
   wled: { on: boolean; hosts: string[]; strength: number };
+  // LedFx does the audio analysis; the TV switches its scenes for what's going on at the party
+  ledfx: { on: boolean; host: string; scenes: { base: string; drop: string; dance: string; quiz: string; idle: string } };
   quizMode: "off" | "sometimes";
   quizRounds: number;
 }
@@ -83,6 +85,7 @@ function defaults(): Settings {
     drops: true,
     danceOffs: false,
     wled: { on: false, hosts: [], strength: 1 },
+    ledfx: { on: false, host: "", scenes: { base: "", drop: "", dance: "", quiz: "", idle: "" } },
     quizMode: "off",
     quizRounds: 5,
   };
