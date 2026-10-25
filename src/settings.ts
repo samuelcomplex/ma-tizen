@@ -77,7 +77,7 @@ function defaults(): Settings {
     buttons: Object.assign({ preset: "standard" }, BUTTON_PRESETS[0].buttons),
     tvMuted: false,
     vizStyle: "bars",
-    bgStyle: "liquid",
+    bgStyle: "simple",
     glLevel: 0,
     scanPopups: true,
     statsPopups: true,

@@ -4,10 +4,11 @@ A [Music Assistant](https://music-assistant.io) app for Samsung TVs (Tizen). It 
 playing on the TV and can make the TV a speaker of its own:
 
 - **Now playing:** big album art, title, artist, progress and what's up next, over a flowing
-  "liquid" background made from the album art and drawn by the TV's graphics chip; it pulses
-  with the music while the TV plays along. New songs slide in. The TV's chip is modest, so the
-  background is drawn small and at a few frames a second; if the screen still can't keep up, the
-  app steps it down by itself (and finally to a simple background) and remembers where it settled.
+  blurred album-art background. An optional "liquid" background (flowing album art drawn by the
+  TV's graphics chip, pulsing with the music while the TV plays along) can be switched on in the
+  menu; it is off by default because it is too heavy for modest TVs such as the 2024 Q60D. If the
+  screen can't keep up, the app steps it down by itself (and finally to the simple background)
+  and remembers where it settled. New songs slide in.
 - **Karaoke:** synced lyrics fill the screen and follow the song, whenever Music Assistant has
   synced (LRC) lyrics for it (for example from its LRCLIB provider). Lines fill in as they're
   sung, word by word when the lyrics have word timing, with a count-in before the first line and
